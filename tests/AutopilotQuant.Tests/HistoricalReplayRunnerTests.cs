@@ -70,6 +70,9 @@ public class HistoricalReplayRunnerTests
         Assert.Null(report.ProfitFactor);
         var trade = Assert.Single(report.ClosedTrades);
         Assert.Equal(1.75m, trade.NetProfitLoss);
+        var bars = CreateReplayBars();
+        Assert.Equal(bars[100].Timestamp, trade.OpenedAtUtc);
+        Assert.Equal(bars[^1].Timestamp, trade.ClosedAtUtc);
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(report));
         Assert.Equal(1, json.RootElement.GetProperty("ClosedTrades").GetArrayLength());
         Assert.Equal(

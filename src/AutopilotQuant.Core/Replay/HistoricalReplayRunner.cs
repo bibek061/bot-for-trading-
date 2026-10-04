@@ -169,7 +169,11 @@ public sealed class HistoricalReplayRunner
         {
             if (!latestBars.TryGetValue(position.Symbol, out var lastBar))
                 throw new InvalidOperationException($"No final replay price is available for {position.Symbol}.");
-            var close = await broker.ClosePositionAsync(position.PositionId, lastBar.Close, ct);
+            var close = await broker.ClosePositionAsync(
+                position.PositionId,
+                lastBar.Close,
+                ct,
+                lastBar.Timestamp);
             if (!close.Ok)
                 throw new InvalidOperationException($"Unable to close paper position at replay boundary: {close.Error}");
         }

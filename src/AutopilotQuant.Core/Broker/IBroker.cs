@@ -7,7 +7,8 @@ public record OrderRequest(
     string OrderType,
     decimal? LimitPrice,
     string Tag,
-    decimal? ReferencePrice = null);
+    decimal? ReferencePrice = null,
+    DateTimeOffset? ExecutionTimestamp = null);
 public record OrderResult(bool Ok, string? OrderId, string? Error, string? PositionId = null);
 
 public record PositionCloseResult(bool Ok, string? OrderId, string? Error, ClosedPaperTrade? Trade);
@@ -21,5 +22,6 @@ public interface IBroker
     Task<PositionCloseResult> ClosePositionAsync(
         string positionId,
         decimal referencePrice,
-        CancellationToken ct);
+        CancellationToken ct,
+        DateTimeOffset? executionTimestamp = null);
 }

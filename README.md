@@ -23,6 +23,12 @@ The repository includes contract metadata, configurable risk checks, feature gat
 
 Each paper entry is tracked as an independent position and must be closed by its position ID. Short entries remain locked by default. The simulator tracks mark-to-market unrealized P/L, closed-trade realized P/L, and entry/exit fees; it does not persist state between runs. Regime classification and signals are not yet connected to live market data. T4 market data and live order routing are not connected or enabled.
 
+## Public sample-data demo
+
+The [project website](https://bibek061.github.io/bot-for-trading-/) loads a fabricated 102-bar MES-like CSV and its JSON replay report from `docs/data/`. The chart and metrics are generated from that synthetic dataset only; they are not current quotes, historical exchange data, or evidence of strategy performance. There is no market-data provider account/API configured yet. Select and license a provider before adding real data; keep credentials in local environment variables or server-side secret storage and never in Git or browser code.
+
+Download the [synthetic CSV](./docs/data/sample_mes_5m_synthetic.csv) and [generated JSON report](./docs/data/sample-replay-report.json).
+
 ## Next milestones
 1. Validate regime thresholds and EMA20 pullback/reclaim rules on real historical/replay data
 2. Add breakout strategy
@@ -51,7 +57,7 @@ Try the included deterministic synthetic fixture:
 
     dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synthetic.csv --report-json data\sample-replay-report.json
 
-The sample is fabricated to exercise one entry/exit path; it is not real market data and must not be used to assess strategy performance. Replay orders are simulated only. Open positions are closed at each replay calendar-day boundary and at the end of the input, using the last available bar close and configured paper slippage/fees. The replay sorts bars chronologically and rejects duplicate symbol/timestamp pairs.
+The sample is fabricated to exercise one entry/exit path; it is not real market data and must not be used to assess strategy performance. Replay orders are simulated only. Open positions are closed at each replay trading-day boundary in `America/New_York` (configurable) and at the end of the input, using the last available bar close and configured paper slippage/fees. The replay sorts bars chronologically and rejects duplicate symbol/timestamp pairs.
 
 The JSON report contains run-level counts and performance metrics plus each closed trade's entry/exit prices, fees, gross P/L, and net P/L. Win rate uses net trade P/L. Profit factor uses net winning and losing trade P/L and is `null` when there are no losing trades because the ratio is undefined.
 

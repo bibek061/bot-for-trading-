@@ -15,6 +15,7 @@ public sealed class T4Broker : IBroker
     public Task<PositionCloseResult> ClosePositionAsync(
         string positionId,
         decimal referencePrice,
-        CancellationToken ct) =>
+        CancellationToken ct,
+        DateTimeOffset? executionTimestamp = null) =>
         Task.FromResult(new PositionCloseResult(false, null, "DRY RUN: T4 live order routing is not wired.", null));
 }

@@ -10,6 +10,8 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It currently suppor
 - Replay uses explicit-price simulated fills, configured slippage/fees, and the configured trading timezone (default `America/New_York`).
 - Replay closes open positions at timezone-local calendar-day boundaries and at the end of input.
 - The included CSV is synthetic and must not be treated as historical market data or a performance result.
+- No licensed market-data provider or API account is currently configured. The public website chart loads only the synthetic fixture and its generated replay report.
+- Never put provider credentials in browser JavaScript, static website files, or Git; use local environment variables or server-side secret storage.
 - Strategy thresholds are research baselines, not validated trading advice.
 
 ## Current components

@@ -182,7 +182,7 @@ public sealed class PaperBroker : IBroker
             if (!CanCoverFees(request.Quantity))
                 return Task.FromResult(new OrderResult(false, null, "Insufficient simulated equity to cover fees."));
 
-            var now = DateTimeOffset.UtcNow;
+            var now = request.ExecutionTimestamp ?? DateTimeOffset.UtcNow;
             var orderId = Guid.NewGuid().ToString("N");
             var positionId = Guid.NewGuid().ToString("N");
             var fee = _options.FeePerContract * request.Quantity;
@@ -217,7 +217,8 @@ public sealed class PaperBroker : IBroker
     public Task<PositionCloseResult> ClosePositionAsync(
         string positionId,
         decimal referencePrice,
-        CancellationToken ct)
+        CancellationToken ct,
+        DateTimeOffset? executionTimestamp = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(positionId);
         ct.ThrowIfCancellationRequested();
@@ -244,7 +245,7 @@ public sealed class PaperBroker : IBroker
             if (fillPrice <= 0)
                 return Task.FromResult(new PositionCloseResult(
                     false, null, "Simulated fill price must be positive.", null));
-            var now = DateTimeOffset.UtcNow;
+            var now = executionTimestamp ?? DateTimeOffset.UtcNow;
             var orderId = Guid.NewGuid().ToString("N");
             var exitFee = _options.FeePerContract * position.Quantity;
             var grossPnl = CalculateGrossProfitLoss(position, fillPrice, contract);

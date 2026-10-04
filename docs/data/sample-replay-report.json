@@ -1,0 +1,36 @@
+{
+  "BarsProcessed": 102,
+  "SignalCandidates": 1,
+  "OrdersPlaced": 1,
+  "RiskRejected": 0,
+  "OtherOrderRejections": 0,
+  "TradesClosed": 1,
+  "WinningTrades": 1,
+  "LosingTrades": 0,
+  "GrossProfit": 3.75,
+  "GrossLoss": 0,
+  "NetProfitLoss": 1.25,
+  "EndingEquity": 10001.25,
+  "WinRate": 1,
+  "ProfitFactor": null,
+  "ClosedTrades": [
+    {
+      "PositionId": "069d3519d59e421d858cd0ad7d2ff983",
+      "EntryOrderId": "0465dcf99e184b7cae960c8f593accac",
+      "ExitOrderId": "9da0c8c796c343bf86aa204ecd39fa1e",
+      "Symbol": "MES",
+      "Side": "BUY",
+      "Quantity": 1,
+      "EntryPrice": 5023.50,
+      "ExitPrice": 5024.25,
+      "GrossProfitLoss": 3.75,
+      "EntryFee": 1.25,
+      "ExitFee": 1.25,
+      "NetProfitLoss": 1.25,
+      "Tag": "EMA20 pullback reclaim",
+      "OpenedAtUtc": "2025-01-02T17:50:00-05:00",
+      "ClosedAtUtc": "2025-01-02T17:55:00-05:00"
+    }
+  ],
+  "TimeZoneId": "America/New_York"
+}

@@ -150,7 +150,8 @@ public sealed class PaperSignalCoordinator
                     "MARKET",
                     null,
                     signal.Tag,
-                    signal.ReferencePrice),
+                    signal.ReferencePrice,
+                    signal.BarTimestamp),
                 ct);
             return new PaperSignalProcessingResult(
                 evaluation,
