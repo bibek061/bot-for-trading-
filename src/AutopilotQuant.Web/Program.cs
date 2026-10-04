@@ -65,7 +65,8 @@ app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+    // TradingView runs only in a separate-origin frame. Remote scripts cannot run in the dashboard.
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-src https://www.tradingview-widget.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
     context.Response.Headers.CacheControl = "no-store";
     if (context.Connection.RemoteIpAddress is not { } ip || !IPAddress.IsLoopback(ip)
         || context.Request.Host.Host is not ("127.0.0.1" or "localhost")

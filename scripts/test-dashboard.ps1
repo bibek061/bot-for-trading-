@@ -44,6 +44,12 @@ function Check([bool]$Condition, [string]$Message) {
 $server = $null
 try {
     $server = Start-TestServer $false
+    $homePage = Invoke-WebRequest "$url/"
+    $csp = $homePage.Headers['Content-Security-Policy'] -join ' '
+    Check ($csp -match "script-src 'self';" -and $csp -match "connect-src 'self';" -and $csp -match "frame-src https://www.tradingview-widget.com;" -and $csp -match "frame-ancestors 'none';" -and $csp -notmatch 'unsafe-inline|unsafe-eval') 'TradingView is isolated to a fixed external frame while dashboard scripts and connections stay local'
+    Check ($homePage.Content -match 'tradingview-reference.js' -and $homePage.Content -notmatch '<script[^>]+src="https?://' -and !(($homePage.Content).Contains($dashboardHeaders['X-Dashboard-Key']))) 'Dashboard assets contain no remote executable scripts or operator key'
+    Check ((Invoke-WebRequest "$url/tradingview-reference.js" -SkipHttpErrorCheck).StatusCode -eq 200) 'TradingView integration asset is served locally'
+    Check ((Invoke-WebRequest "$url/api/state" -Headers (@{'Origin'='https://www.tradingview-widget.com'} + $dashboardHeaders) -SkipHttpErrorCheck).StatusCode -eq 403) 'TradingView frame origin cannot access local account API even with an operator header'
     Check ((Invoke-WebRequest "$url/api/state" -SkipHttpErrorCheck).StatusCode -eq 401) 'Account API requires authentication'
     Check ((Invoke-WebRequest "$url/api/state" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot read account API'
     Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body '{}' -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 503) 'Feed disabled without configured adapter'

@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const referenceChart = new TradingViewReference.ReferenceChart(document);
 let accessKey = '', state, selectedSymbol = 'MES', currentReplay, polling = false;
 let providerState, marketDataDirty = false, marketDataBusy = false;
 const usd = value => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(value);
@@ -15,7 +16,7 @@ async function api(path, options = {}) {
   if (!response.ok) { if (response.status === 401) lock(); throw new Error(body.error || `Request failed (${response.status})`); }
   return body;
 }
-function lock() { accessKey = ''; $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
+function lock() { accessKey = ''; referenceChart.close(); $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
 $('lock').onclick = lock;
 $('unlock-form').onsubmit = async event => {
   event.preventDefault(); accessKey = $('access-key').value.trim();
@@ -68,9 +69,10 @@ document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () 
   const name = button.dataset.panel;
   document.querySelectorAll('.panel-page').forEach(panel => panel.hidden = panel.id !== name);
   document.querySelectorAll('[data-panel]').forEach(nav => { nav.classList.toggle('active',nav === button); if (nav === button) nav.setAttribute('aria-current','page'); else nav.removeAttribute('aria-current'); });
-  text('breadcrumb', {overview:'Overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data'}[name]);
-  text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data'}[name]);
-  text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.','market-data':'Prepare your connection. Know where every price comes from.'}[name]);
+  text('breadcrumb', {overview:'Overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data',tradingview:'TradingView'}[name]);
+  text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data',tradingview:'TradingView research'}[name]);
+  text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.','market-data':'Prepare your connection. Know where every price comes from.',tradingview:'Explore futures charts and broader market context.'}[name]);
+  if (name !== 'tradingview') referenceChart.close();
   if (name === 'overview') renderChart();
 });
 document.querySelectorAll('[data-symbol]').forEach(button => button.onclick = () => {

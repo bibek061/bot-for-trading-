@@ -131,8 +131,11 @@ may be partial. The time axis is UTC. The chart explicitly distinguishes a formi
 completed history, current quotes, stale quotes and no data. The browser polls local state once
 per second; the provider connection runs independently of the tab.
 
-TradingView supplies the chart library, not this application's prices. There is no scraping,
-TradingView account login, widget feed reuse or remote script dependency.
+TradingView supplies the Overview chart library; the configured provider supplies the bot's
+prices. The separate [TradingView page](TRADINGVIEW.md) offers futures chart links and an
+optional hosted SPY/QQQ ETF reference widget. No widget prices enter the bot, and no remote
+script executes in the authenticated dashboard document. TradingView has no public quote
+API; its free widgets do not include CME futures. A licensed provider feed is still required.
 
 ## External adapters and local API
 

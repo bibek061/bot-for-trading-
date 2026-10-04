@@ -11,6 +11,11 @@ a T4 simulator stream with optional historical API backfill, reconnect handling 
 TradingView Lightweight Charts interface. Actual T4 account/entitlement verification is
 still pending; no account or data subscription is bundled. Live order routing remains disabled.
 
+The **TradingView** page adds MES/MNQ futures chart links and an optional hosted SPY/QQQ
+reference widget with indicators and drawing tools. These ETFs are market context only:
+TradingView offers no public quote API, and its free widgets do not include CME futures.
+See [TradingView setup and data limits](docs/TRADINGVIEW.md).
+
 ```powershell
 ./scripts/start-dashboard.ps1
 ```

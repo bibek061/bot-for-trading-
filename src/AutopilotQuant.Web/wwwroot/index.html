@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark"><title>Autopilot Quant · Paper workspace</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="app.css"><script src="vendor/lightweight-charts/lightweight-charts.standalone.production.js" defer></script><script src="market-chart.js" defer></script><script src="app.js" defer></script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="app.css"><script src="vendor/lightweight-charts/lightweight-charts.standalone.production.js" defer></script><script src="market-chart.js" defer></script><script src="tradingview-reference.js" defer></script><script src="app.js" defer></script>
 </head>
 <body>
   <div id="login" class="login-shell">
@@ -27,6 +27,7 @@
         <button class="nav-button active" data-panel="overview" aria-current="page"><span aria-hidden="true">▦</span> Overview</button>
         <button class="nav-button" data-panel="research"><span aria-hidden="true">⌁</span> Replay lab</button>
         <button class="nav-button" data-panel="market-data"><span aria-hidden="true">≋</span> Market data</button>
+        <button class="nav-button" data-panel="tradingview"><span aria-hidden="true">↗</span> TradingView</button>
         <button class="nav-button" data-panel="risk"><span aria-hidden="true">◇</span> Risk & settings</button>
       </nav>
       <div class="sidebar-bottom"><span class="paper-label">PAPER ENVIRONMENT</span><p>Simulated execution.<br>No real orders.</p><button id="lock" class="text-button">Lock workspace ↗</button></div>
@@ -101,6 +102,37 @@
             <div class="card-heading"><h2>Keep credentials on the server</h2><span class="tag">LOCAL CONFIGURATION</span></div>
             <p class="muted">After you obtain T4 simulator access, set <code>MarketData__T4__ApiKey</code> in the server environment or <code>MarketData:T4:ApiKey</code> in the Git-ignored <code>config/appsettings.Local.json</code>, then restart the dashboard. The page displays only whether a key is present.</p>
             <p class="micro">Simulator endpoint: <code>wss://wss-sim.t4login.com/v2</code>. For an external adapter, set a separate <code>MarketData__AdapterKey</code> (32–256 characters). Configuration examples and feed formats are in <code>docs/MARKET_DATA.md</code>.</p>
+          </article>
+        </section>
+
+        <section id="tradingview" class="panel-page" hidden aria-label="TradingView charts">
+          <article class="card">
+            <div class="card-heading"><div><h2>MES / MNQ on TradingView</h2><p>Continuous futures charts · opens TradingView in a new tab</p></div><span class="tag">REFERENCE ONLY</span></div>
+            <p class="muted">CME futures are not included in TradingView’s free website widgets. Open the futures charts directly on TradingView; data access and delays depend on your TradingView account and exchange permissions.</p>
+            <div class="reference-links">
+              <a href="https://www.tradingview.com/chart/?symbol=CME_MINI%3AMES1%21" target="_blank" rel="noopener noreferrer"><strong>MES1! ↗</strong><span>Micro E-mini S&amp;P 500 futures</span></a>
+              <a href="https://www.tradingview.com/chart/?symbol=CME_MINI%3AMNQ1%21" target="_blank" rel="noopener noreferrer"><strong>MNQ1! ↗</strong><span>Micro E-mini Nasdaq-100 futures</span></a>
+            </div>
+            <p class="micro">These continuous charts are for research. The paper bot uses the exact expiring MES/MNQ contracts configured in Market data and displayed in Overview.</p>
+          </article>
+          <article class="card reference-card">
+            <div class="card-heading"><div><h2>Market context chart</h2><p>TradingView hosted chart · ETF prices · may be delayed</p></div><span class="tag">DISPLAY ONLY</span></div>
+            <p class="muted">SPY and QQQ are ETFs for broader market context. Their prices do not represent MES or MNQ futures and never enter the bot’s signals, fills or account marks.</p>
+            <div class="chart-toolbar reference-toolbar">
+              <label for="reference-symbol">ETF<select id="reference-symbol"><option value="SPY">SPY · S&amp;P 500 ETF</option><option value="QQQ">QQQ · Nasdaq-100 ETF</option></select></label>
+              <label for="reference-interval">Starting interval<select id="reference-interval"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="60">1 hour</option><option value="D">1 day</option></select></label>
+              <button id="reference-load" type="button" class="primary">Load TradingView chart</button><button id="reference-close" type="button" disabled>Close chart</button>
+              <a id="reference-open" href="https://www.tradingview.com/chart/?symbol=AMEX%3ASPY" target="_blank" rel="noopener noreferrer">Open on TradingView ↗</a>
+            </div>
+            <p id="reference-status" class="micro" role="status">Chart closed. Load to connect your browser to TradingView. No API key is needed.</p>
+            <div id="reference-frame" class="reference-frame" hidden></div>
+            <p id="reference-placeholder" class="reference-placeholder">Use TradingView’s interactive candles, indicators and drawing tools for market research.</p>
+            <p class="chart-attribution"><a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">Charts by TradingView</a> · Check the chart’s own data-delay label. If the embed is blank or unavailable, use Open on TradingView.</p>
+          </article>
+          <article class="card credential-guide">
+            <div class="card-heading"><h2>Data for the bot</h2><span class="tag">PROVIDER API REQUIRED</span></div>
+            <p class="muted">TradingView does not provide a public API to retrieve market prices or indicator values. Its widgets are for viewing, and a paid TradingView plan does not upgrade their data. For executable MES/MNQ quotes and historical bars, configure authorized T4 access or an external provider adapter in Market data.</p>
+            <p class="micro"><a href="https://www.tradingview.com/widget-docs/faq/data/" target="_blank" rel="noopener noreferrer">TradingView data and API guidance ↗</a> · Your local dashboard key only unlocks this workspace.</p>
           </article>
         </section>
 

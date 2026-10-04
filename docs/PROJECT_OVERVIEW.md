@@ -26,6 +26,7 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It supports histori
 - Market-data settings with exact MES/MNQ expiring contract bindings, server-only credential configuration, setup readiness, and a bounded T4 simulator login/entitlement/contract/quote diagnostic. See [market-data configuration](MARKET_DATA.md).
 - Continuous T4 simulator connection with heartbeat, bounded queues, ordered quote batches, reconnect/invalidation, historical warmup and five-minute completed-bar refresh. Forming candles are display-only.
 - TradingView Lightweight Charts with crosshair, zoom/pan, volume, chart EMA overlays, display aggregation and fullscreen.
+- A separate [TradingView research page](TRADINGVIEW.md) with direct MES/MNQ chart links and an optional isolated SPY/QQQ ETF widget. TradingView offers no public quote API; these reference displays do not feed the bot.
 - Forward paper entries wait for a later quote and simulate buys at ask plus slippage; marked exposure and exits use bid. Simulated stops/targets continue while entries are paused.
 - Atomic local state snapshots, single-writer protection, paused restart recovery, daily loss/drawdown halts, scheduled paper flatten, and an independent staleness monitor.
 - Saved CSV replay reports on the local server; replay uploads do not alter the forward account. The legacy replay fill assumptions remain explicitly labeled.
