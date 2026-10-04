@@ -42,3 +42,35 @@ runtime dependency and is not bundled into the website or committed to our repos
 See [market-data setup and behavior](MARKET_DATA.md) for details. Simulator access and
 authenticated quotes still need to be verified with an issued T4 key. The working
 Public.com reference connection has its own credentials and supplies ETF context only.
+
+## Signed into WebTrader but the dashboard is still incomplete
+
+WebTrader's **Connected** indicator confirms that browser session only. It does not
+authenticate AutopilotQuant or supply an API key to the local server. WebTrader's
+Settings panel contains display preferences; API-key issuance was not exposed in the
+panel inspected on 2026-10-04.
+
+Use **Quotes → Add Contract → SIM:CME Equity Futures** to inspect the simulator
+catalog. It includes **SIM:E-mini Micro S&P 500** and **SIM:E-mini Micro NASDAQ-100**.
+Seeing those product names does not verify API permissions, current quotes or the
+exact expiring market IDs required by this dashboard. Confirm those through the API
+after CTS supplies access.
+
+If you received only a simulator username and password, contact the API team listed
+on the [official support page](https://docs.t4login.com/doku.php?id=developers:apiv2:download#support):
+**T4.APISupport@Plus500.com** (verified 2026-10-04). You can send this request after
+adding your simulator firm and username, without including your password:
+
+> Subject: API v2 simulator access for AutopilotQuant
+>
+> I can sign into T4 WebTrader on the simulator. I am connecting a local application
+> named AutopilotQuant for MES/MNQ market data and local paper execution. Please
+> advise how to obtain an API key for wss://wss-sim.t4login.com/v2, confirm my MES/MNQ
+> quote and historical-data permissions, and how to retrieve the exact exchange,
+> product and expiring market IDs. Please confirm any trial limits or charges before
+> enabling paid services. If API-key access is unavailable, please advise the
+> application-name/application-license requirements for username/password login.
+
+This is a request template only; the project does not send it. The current connector
+accepts API keys. A CTS-issued application license would require adding the documented
+alternate authentication flow; a WebTrader session cookie is not used for API login.
