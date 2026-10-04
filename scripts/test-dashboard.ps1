@@ -26,6 +26,7 @@ function Start-TestServer([bool]$WithAdapter) {
     $info.Environment['Dashboard__DataDirectory'] = $testDirectory
     $info.Environment['Dashboard__AccessKey'] = $dashboardHeaders['X-Dashboard-Key']
     $info.Environment['MarketData__AdapterKey'] = $(if ($WithAdapter) { $adapterHeaders['X-Adapter-Key'] } else { '' })
+    $info.Environment['MarketData__T4__ApiKey'] = ''
     $info.Environment['Logging__LogLevel__Default'] = 'Warning'
     $process = [Diagnostics.Process]::Start($info)
     for ($attempt = 0; $attempt -lt 50; $attempt++) {
@@ -66,6 +67,12 @@ try {
     Check ($restored.session.settings.stopTicks -eq 24 -and $restored.session.paused) 'Settings survive restart and engine stays paused'
     $saved = Invoke-RestMethod "$url/api/replays/$($run.id)" -Headers $dashboardHeaders
     Check ($saved.id -eq $run.id) 'Replay report survives restart'
+    Check ((Invoke-WebRequest "$url/api/market-data" -SkipHttpErrorCheck).StatusCode -eq 401) 'Market-data settings require dashboard authentication'
+    $marketConfiguration = @{provider='external'; instruments=@(@{symbol='MES'; enabled=$true; exchangeId=''; productId=''; marketId='SYNTHETIC-API-TEST'}, @{symbol='MNQ'; enabled=$false; exchangeId=''; productId=''; marketId=''})}
+    $configured = Invoke-RestMethod "$url/api/market-data" -Method Put -ContentType 'application/json' -Body ($marketConfiguration | ConvertTo-Json -Depth 5) -Headers $dashboardHeaders
+    Check ($configured.configured -and $configured.adapterKeyPresent -and !$configured.t4ApiKeyPresent -and !$configured.continuousT4StreamingSupported) 'External contract configuration is ready without claiming a T4 stream'
+    Check ((Invoke-WebRequest "$url/api/market-data" -Method Put -ContentType 'application/json' -Body '{"provider":"t4-live","instruments":[]}' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Live provider configuration rejected'
+    Check ((Invoke-WebRequest "$url/api/market-data" -Method Put -ContentType 'application/json' -Body '{"provider":"t4-simulator","instruments":[],"apiKey":"DO-NOT-SAVE"}' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Browser-supplied provider credentials rejected'
     $quote = @{symbol='MES'; contractId='SYNTHETIC-API-TEST'; timestamp=[DateTimeOffset]::UtcNow.ToString('O'); bid=5000; ask=5000.25} | ConvertTo-Json
     Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $quote -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Dashboard key cannot inject market data'
     $withoutOffset = @{symbol='MES'; contractId='SYNTHETIC-API-TEST'; timestamp=[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss'); bid=5000; ask=5000.25} | ConvertTo-Json
@@ -73,6 +80,19 @@ try {
     $fed = Invoke-RestMethod "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $quote -Headers $adapterHeaders
     Check ($fed.instruments[0].fresh -and $fed.paused) 'Authenticated adapter quote is visible without arming execution'
     Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $quote -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Duplicate quote rejected over HTTP'
+    $wrongContract = @{symbol='MES'; contractId='OTHER-EXPIRY'; timestamp=[DateTimeOffset]::UtcNow.ToString('O'); bid=5000; ask=5000.25} | ConvertTo-Json
+    Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $wrongContract -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Wrong expiring contract rejected over HTTP'
+    $marketConfiguration.provider = 't4-simulator'
+    $configured = Invoke-RestMethod "$url/api/market-data" -Method Put -ContentType 'application/json' -Body ($marketConfiguration | ConvertTo-Json -Depth 5) -Headers $dashboardHeaders
+    Check (!$configured.configured -and $configured.missing.Count -gt 0) 'Incomplete T4 setup can be saved with explicit missing requirements'
+    Check ((Invoke-WebRequest "$url/api/market-data/test" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'T4 test blocked without credentials and complete IDs'
+    Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $quote -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'External injection disabled when T4 is selected'
+    $changed = Invoke-RestMethod "$url/api/state" -Headers $dashboardHeaders
+    Check ($changed.session.paused -and !$changed.session.instruments[0].fresh -and $null -eq $changed.session.instruments[0].quote) 'Provider change invalidates old quotes and keeps paper paused'
+    $server.Kill($true); $server.WaitForExit(); $server.Dispose(); $server = $null
+    $server = Start-TestServer $true
+    $persisted = Invoke-RestMethod "$url/api/market-data" -Headers $dashboardHeaders
+    Check ($persisted.settings.provider -eq 't4-simulator' -and $persisted.settings.instruments[0].marketId -eq 'SYNTHETIC-API-TEST' -and $null -eq $persisted.lastTest) 'Market-data bindings survive restart without persisting verified connection claims'
     Write-Host 'Dashboard HTTP smoke tests passed.'
 } finally {
     if ($null -ne $server) { if (!$server.HasExited) { $server.Kill($true); $server.WaitForExit() }; $server.Dispose() }

@@ -52,6 +52,21 @@ public sealed class PaperSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Feed_Configuration_Cannot_Clear_Open_Exposure_Or_Armed_Strategy()
+    {
+        await QueueSignal();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _session.ResetMarketDataAsync());
+        _clock.Now = _clock.Now.AddSeconds(1);
+        await _session.AcceptQuoteAsync(Quote());
+        await _session.ControlAsync("pause");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _session.ResetMarketDataAsync());
+        var view = await _session.ViewAsync();
+        Assert.Single(view.Positions);
+        Assert.Single(view.Protection);
+        Assert.True(view.Instruments[0].Fresh);
+    }
+
+    [Fact]
     public async Task Signal_Fills_Only_On_A_Later_Quote_At_Ask_Plus_Slippage()
     {
         await QueueSignal();

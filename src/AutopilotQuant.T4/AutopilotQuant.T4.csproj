@@ -6,5 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutopilotQuant.Core\AutopilotQuant.Core.csproj" />
+    <PackageReference Include="Google.Protobuf" Version="3.36.1" />
+    <PackageReference Include="Grpc.Tools" Version="2.84.0" PrivateAssets="All" />
+    <Protobuf Include="Protocol\configuration.proto" GrpcServices="None" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,68 @@
+syntax = "proto3";
+option csharp_namespace = "AutopilotQuant.T4.Protocol";
+import "google/protobuf/timestamp.proto";
+
+// Independently defined, minimal wire contract for a read-only configuration probe.
+// Field numbers/types follow CTS's documented T4 API v2 (see docs/MARKET_DATA.md).
+// There are deliberately no account or order-routing messages in this client.
+message ClientMessage {
+  oneof payload {
+    LoginRequest login_request = 2;
+    MarketSubscribe market_subscribe = 100;
+  }
+}
+message ServerMessage {
+  oneof payload {
+    LoginResponse login_response = 2;
+    MarketSubscribeReject market_subscribe_reject = 100;
+    MarketDetails market_details = 102;
+    MarketDepth market_depth = 103;
+    MarketSnapshot market_snapshot = 108;
+  }
+}
+message LoginRequest { string api_key = 1; int32 price_format = 10; }
+message LoginResponse {
+  int32 result = 1;
+  string session_id = 2;
+  repeated Exchange exchanges = 7;
+  message Exchange { string exchange_id = 1; int32 market_data_type = 3; }
+}
+message MarketSubscribe {
+  string exchange_id = 1;
+  string contract_id = 2;
+  string market_id = 3;
+  int32 quotes = 4;
+  bool ticker = 5;
+}
+message MarketSubscribeReject { string market_id = 1; int32 mode = 3; }
+message Price { string value = 1; }
+message MarketDetails {
+  string market_id = 1;
+  string exchange_id = 2;
+  string contract_id = 3;
+  int32 expiry_date = 4;
+  int32 contract_type = 5;
+  Price point_value = 7;
+  Price min_price_increment = 8;
+  google.protobuf.Timestamp last_trading_date = 11;
+  int32 strategy_type = 19;
+  bool disabled = 28;
+}
+message MarketDepth {
+  string market_id = 1;
+  google.protobuf.Timestamp time = 4;
+  bool delayed = 5;
+  repeated DepthLine bids = 6;
+  repeated DepthLine offers = 7;
+  int32 mode = 10;
+  int32 flags = 11;
+  message DepthLine { Price price = 1; int32 volume = 2; }
+}
+message MarketSnapshot {
+  string market_id = 1;
+  int32 mode = 2;
+  bool due_to_connection = 3;
+  bool delayed = 4;
+  repeated SnapshotItem messages = 5;
+  message SnapshotItem { oneof payload { MarketDepth market_depth = 3; } }
+}

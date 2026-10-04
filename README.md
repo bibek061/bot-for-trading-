@@ -6,7 +6,9 @@ Experimental futures research and paper-trading workspace for MES/MNQ, with a pl
 
 The .NET web app provides a local dashboard, saved paper sessions, risk controls,
 next-quote forward simulation, CSV replay reports, and authenticated ingress for a future
-market-data adapter. No provider is connected or bundled. Live order routing remains disabled.
+market-data adapter. The Market data page adds saved provider/contract configuration and
+a bounded T4 simulator login/contract/quote check. Continuous T4 streaming is not implemented;
+no account or data subscription is bundled. Live order routing remains disabled.
 
 ```powershell
 ./scripts/start-dashboard.ps1
@@ -16,6 +18,8 @@ Open `http://127.0.0.1:5080`, then unlock with the key in `data/dashboard/dashbo
 The service starts paused. An authorized, separately implemented adapter and fresh quotes
 are required before paper entries can be enabled. GitHub Pages cannot host this backend.
 See [dashboard setup, integration, recovery, and limitations](docs/DASHBOARD.md).
+See [market-data configuration and server credentials](docs/MARKET_DATA.md) to prepare T4
+simulator access or bind a separate external adapter to exact expiring contracts.
 
 ## Current scope
 - Windows + .NET 10
@@ -45,7 +49,7 @@ The [project website](https://bibek061.github.io/bot-for-trading-/) lets you sel
 Use a market-data provider whose terms authorize your intended use; keep any provider credentials local or server-side, never in Git or browser code. The fabricated CSV under `tests/AutopilotQuant.Tests/Fixtures/` exists only to make automated tests repeatable and is not used by the site.
 
 ## Next milestones
-1. Obtain authorized T4 simulator/data access and implement the adapter
+1. Obtain authorized T4 simulator/data access, validate the configuration check, and implement continuous streaming
 2. Validate discovery, quote/bar normalization, reconnect, backfill, and exchange calendars
 3. Validate EMA20 research and forward fills on licensed market data
 4. Upgrade local snapshots for sustained feeds and durable operational auditing

@@ -26,6 +26,7 @@
       <nav aria-label="Main navigation">
         <button class="nav-button active" data-panel="overview" aria-current="page"><span aria-hidden="true">▦</span> Overview</button>
         <button class="nav-button" data-panel="research"><span aria-hidden="true">⌁</span> Replay lab</button>
+        <button class="nav-button" data-panel="market-data"><span aria-hidden="true">≋</span> Market data</button>
         <button class="nav-button" data-panel="risk"><span aria-hidden="true">◇</span> Risk & settings</button>
       </nav>
       <div class="sidebar-bottom"><span class="paper-label">PAPER ENVIRONMENT</span><p>Simulated execution.<br>No real orders.</p><button id="lock" class="text-button">Lock workspace ↗</button></div>
@@ -34,7 +35,7 @@
       <header class="topbar"><span>Workspace <span class="slash">/</span> <span id="breadcrumb">Overview</span></span><div><span id="connection" class="connection">● Connected locally</span><span class="account">PAPER · 001</span></div></header>
       <main>
         <div class="page-heading"><div><p class="eyebrow">AUTOPILOT QUANT</p><h1 id="page-title">Paper overview</h1><p id="page-description" class="muted">Your strategy, exposure, and execution in one place.</p></div><div class="asof">SERVER TIME<span id="server-time">—</span></div></div>
-        <div id="notice" class="notice" role="status"><span class="notice-icon">i</span><div><strong id="provider-status">Market data not configured</strong><p id="provider-detail">Connect an authorized adapter to begin forward paper testing. No prices are generated.</p></div><span class="tag">SETUP REQUIRED</span></div>
+        <div id="notice" class="notice" role="status"><span class="notice-icon">i</span><div><strong id="provider-status">Market data not configured</strong><p id="provider-detail">Connect an authorized adapter to begin forward paper testing. No prices are generated.</p></div><span id="provider-tag" class="tag">SETUP REQUIRED</span></div>
         <div id="message" class="message" role="alert" hidden></div>
 
         <section id="overview" class="panel-page" aria-label="Overview">
@@ -62,8 +63,47 @@
           <article class="card"><div class="card-heading"><h2>Saved research</h2><span class="muted">Stored on this computer</span></div><div class="table-scroll"><table><thead><tr><th>Dataset</th><th>Run date</th><th>Bars</th><th>Trades</th><th>Net P/L</th><th></th></tr></thead><tbody id="replays"></tbody></table></div></article>
         </section>
 
+        <section id="market-data" class="panel-page" hidden aria-label="Market data configuration">
+          <div class="two-column market-data-grid">
+            <article class="card">
+              <div class="card-heading"><h2>Data source & contracts</h2><span class="tag">PAPER ONLY</span></div>
+              <p class="muted">Save your setup now and add access when it is available. Pause and flatten before changing providers or contracts; saving clears quotes and indicator history.</p>
+              <form id="market-data-form" class="market-data-form">
+                <label for="data-provider">Market-data provider</label>
+                <select id="data-provider"><option value="none">Not configured</option><option value="t4-simulator">T4 simulator · configuration check</option><option value="external">External adapter · quote and bar ingress</option></select>
+                <p id="data-provider-help" class="micro"></p>
+                <div id="market-bindings"></div>
+                <p class="micro">Use the exact provider IDs for the expiring contract. Continuous symbols and automatic rollover are not supported.</p>
+                <div class="data-actions"><button id="save-market-data" class="primary" type="submit">Save configuration</button><button id="test-market-data" type="button">Test T4 configuration</button></div>
+                <p id="data-form-status" class="micro" role="status">No unsaved changes.</p>
+              </form>
+            </article>
+            <div>
+              <article class="card">
+                <div class="card-heading"><h2>Setup readiness</h2><span id="data-readiness" class="tag">INCOMPLETE</span></div>
+                <div class="rule-row"><span>Saved provider</span><strong id="data-source-name">—</strong></div>
+                <div class="rule-row"><span>T4 API key on server</span><strong id="t4-key-status">—</strong></div>
+                <div class="rule-row"><span>External adapter key on server</span><strong id="adapter-key-status">—</strong></div>
+                <ul id="data-missing" class="setup-list"></ul>
+                <p class="micro">A saved configuration or successful test does not start a continuous feed. T4 streaming and historical backfill still need implementation. External adapters can send quotes and completed five-minute bars now.</p>
+              </article>
+              <article class="card">
+                <div class="card-heading"><h2>Latest T4 check</h2><span id="data-test-outcome" class="tag">NOT TESTED</span></div>
+                <p id="data-test-summary" class="muted" role="status">Add authorized simulator access before testing. No provider connection has been attempted.</p>
+                <p id="data-test-time" class="micro"></p><ul id="data-test-markets" class="setup-list"></ul>
+                <p class="micro">The check signs in, validates permissions and contract details, looks for current quotes, then closes within 15 seconds. It sends no orders or prices to the paper account.</p>
+              </article>
+            </div>
+          </div>
+          <article class="card credential-guide">
+            <div class="card-heading"><h2>Keep credentials on the server</h2><span class="tag">LOCAL CONFIGURATION</span></div>
+            <p class="muted">After you obtain T4 simulator access, set <code>MarketData__T4__ApiKey</code> in the server environment or <code>MarketData:T4:ApiKey</code> in the Git-ignored <code>config/appsettings.Local.json</code>, then restart the dashboard. The page displays only whether a key is present.</p>
+            <p class="micro">Simulator endpoint: <code>wss://wss-sim.t4login.com/v2</code>. For an external adapter, set a separate <code>MarketData__AdapterKey</code> (32–256 characters). Configuration examples and feed formats are in <code>docs/MARKET_DATA.md</code>.</p>
+          </article>
+        </section>
+
         <section id="risk" class="panel-page" hidden aria-label="Risk settings">
-          <div class="two-column"><article class="card"><div class="card-heading"><h2>Paper risk limits</h2><span class="tag">SERVER ENFORCED</span></div><p class="muted">Pause and flatten before editing. Limits are research defaults, not validated trading parameters.</p><form id="settings-form" class="settings-form"><label>Contracts per entry<input name="quantity" type="number" min="1" max="10" required></label><label>Maximum open positions<input name="maxOpenPositions" type="number" min="1" max="2" required></label><label>Daily loss limit (%)<input name="dailyLossLimitPct" type="number" min="0.01" max="25" step="0.01" required></label><label>Maximum drawdown (%)<input name="maxDrawdownPct" type="number" min="0.01" max="50" step="0.01" required></label><label>Risk per trade (%)<input name="riskPerTradePct" type="number" min="0.01" max="5" step="0.01" required></label><label>Stop distance (ticks)<input name="stopTicks" type="number" min="1" max="10000" required></label><label>Target distance (ticks)<input name="targetTicks" type="number" min="1" max="10000" required></label><label>Maximum spread (ticks)<input name="maxSpreadTicks" type="number" min="1" max="100" required></label><label>Quote timeout (seconds)<input name="quoteMaxAgeSeconds" type="number" min="1" max="60" required></label><label>Fee per contract / side ($)<input name="feePerContract" type="number" min="0" max="100" step="0.01" required></label><label>Slippage (ticks / side)<input name="slippageTicks" type="number" min="0" max="100" required></label><div></div><label>Weekday entry start (ET)<input name="entryStart" type="time" required></label><label>Entry end / flatten (ET)<input name="entryEnd" type="time" required></label><button class="primary" type="submit">Save paper settings</button></form></article><div><article class="card"><div class="card-heading"><h2>Session health</h2></div><div class="rule-row"><span>Daily loss</span><strong id="daily-loss">—</strong></div><div class="rule-row"><span>Risk halt</span><strong id="risk-halt">—</strong></div><div class="rule-row"><span>Fees paid</span><strong id="fees">—</strong></div><div class="rule-row"><span>Session reset</span><strong>18:00 America/New_York</strong></div><p class="micro">A new session can clear a daily-loss halt; resuming remains explicit. Drawdown halts persist. Holidays and early closes require operator scheduling.</p></article><article class="card"><div class="card-heading"><h2>Provider setup</h2><span class="tag">NEXT STEP</span></div><p class="muted">No T4 connector or credentials are bundled. A future server-side adapter must provide contract-specific quotes and completed bars.</p><ol class="setup-list"><li>Obtain authorized simulator and market-data access.</li><li>Implement and validate the provider adapter.</li><li>Configure a separate MarketData__AdapterKey on the server.</li><li>Warm up indicators, check fresh quotes, then resume paper trading.</li></ol><p class="micro">The adapter key is separate from the dashboard key. Never put provider credentials in browser code.</p></article></div></div>
+          <div class="two-column"><article class="card"><div class="card-heading"><h2>Paper risk limits</h2><span class="tag">SERVER ENFORCED</span></div><p class="muted">Pause and flatten before editing. Limits are research defaults, not validated trading parameters.</p><form id="settings-form" class="settings-form"><label>Contracts per entry<input name="quantity" type="number" min="1" max="10" required></label><label>Maximum open positions<input name="maxOpenPositions" type="number" min="1" max="2" required></label><label>Daily loss limit (%)<input name="dailyLossLimitPct" type="number" min="0.01" max="25" step="0.01" required></label><label>Maximum drawdown (%)<input name="maxDrawdownPct" type="number" min="0.01" max="50" step="0.01" required></label><label>Risk per trade (%)<input name="riskPerTradePct" type="number" min="0.01" max="5" step="0.01" required></label><label>Stop distance (ticks)<input name="stopTicks" type="number" min="1" max="10000" required></label><label>Target distance (ticks)<input name="targetTicks" type="number" min="1" max="10000" required></label><label>Maximum spread (ticks)<input name="maxSpreadTicks" type="number" min="1" max="100" required></label><label>Quote timeout (seconds)<input name="quoteMaxAgeSeconds" type="number" min="1" max="60" required></label><label>Fee per contract / side ($)<input name="feePerContract" type="number" min="0" max="100" step="0.01" required></label><label>Slippage (ticks / side)<input name="slippageTicks" type="number" min="0" max="100" required></label><div></div><label>Weekday entry start (ET)<input name="entryStart" type="time" required></label><label>Entry end / flatten (ET)<input name="entryEnd" type="time" required></label><button class="primary" type="submit">Save paper settings</button></form></article><div><article class="card"><div class="card-heading"><h2>Session health</h2></div><div class="rule-row"><span>Daily loss</span><strong id="daily-loss">—</strong></div><div class="rule-row"><span>Risk halt</span><strong id="risk-halt">—</strong></div><div class="rule-row"><span>Fees paid</span><strong id="fees">—</strong></div><div class="rule-row"><span>Session reset</span><strong>18:00 America/New_York</strong></div><p class="micro">A new session can clear a daily-loss halt; resuming remains explicit. Drawdown halts persist. Holidays and early closes require operator scheduling.</p></article><article class="card"><div class="card-heading"><h2>Provider setup</h2><span class="tag">NEXT STEP</span></div><p class="muted">Open Market data to select a provider, bind exact expiring contracts, and review setup readiness. T4 supports a bounded configuration check; continuous streaming is not implemented.</p><ol class="setup-list"><li>Obtain authorized simulator and market-data access.</li><li>Save exact contract IDs in Market data.</li><li>Configure the provider key on the server and run the T4 check, or start your external adapter.</li><li>Warm up indicators, check fresh quotes, then resume paper trading.</li></ol><p class="micro">The adapter key is separate from the dashboard key. Never put provider credentials in browser code.</p></article></div></div>
         </section>
         <footer><span><span class="dot"></span> LOCAL PAPER WORKSPACE</span><span>Research software · Live routing disabled · v0.2</span></footer>
       </main>

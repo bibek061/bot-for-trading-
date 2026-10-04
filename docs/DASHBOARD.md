@@ -1,8 +1,9 @@
 # Local paper dashboard
 
 This is a single-user, local paper workspace. It never routes real orders. No T4 account,
-market-data subscription, or working provider connector is bundled. The adapter ingress
-is a connection point for future development, not an implemented T4 connection.
+market-data subscription, or continuous T4 feed is bundled. The **Market data** page saves
+provider/contract settings and supports a bounded T4 simulator configuration check.
+See [market-data setup](MARKET_DATA.md) for credentials, diagnostics and remaining streaming work.
 
 ## Start
 
@@ -33,7 +34,8 @@ separate deployment/security review. GitHub Pages only hosts the public CSV prev
 | `Dashboard__Port` | Local port, default 5080 |
 | `Dashboard__DataDirectory` | Private state directory, default repository `data/dashboard` |
 | `Dashboard__AccessKey` | Optional operator key instead of the generated file; 32–256 characters |
-| `MarketData__AdapterKey` | Separate 32–256 character key enabling data ingress |
+| `MarketData__AdapterKey` | Separate 32–256 character key for configured external adapter ingress |
+| `MarketData__T4__ApiKey` | Server-side T4 simulator API key for configuration checks |
 
 Never commit credentials, state, or market data. `data/` is ignored. Custom state directories
 should be outside version control and accessible only to your OS user. For continuous
@@ -82,11 +84,13 @@ For corrupt-state recovery, stop, preserve the corrupt file, inspect/restore a k
 backup, then restart paused. An older backup can lose recent simulated activity. There is
 no browser reset button that erases trading history.
 
-## Future provider adapter contract
+## External provider adapter contract
 
 Implement a server-side process that logs into its provider using secrets outside Git.
 Send normalized JSON with `X-Adapter-Key`. Dashboard keys cannot inject data; adapter keys
-cannot operate controls or read account reports. Unconfigured feed endpoints return 503.
+cannot operate controls or read account reports. A missing adapter key returns 503. Select
+External adapter in Market data and save complete exact contract bindings before sending data;
+other provider modes return 409, and disabled symbols/wrong contracts return 400.
 
 `POST /api/feed/quotes`:
 
@@ -115,8 +119,9 @@ expire after the quote timeout or are replaced by a newer bar.
 
 Start T4 work with the [V2 API](https://docs.t4login.com/doku.php?id=developers:apiv2) and
 [simulator/certification requirements](https://docs.t4login.com/doku.php?id=developers:apiv2:certification).
-Provider login, entitlement checks, discovery, reconnect/resubscribe, calendars, aggregation,
-backfill, and certification still require implementation and actual account access.
+T4 diagnostic login, entitlement/contract checks and bounded quote observation are implemented.
+Continuous streaming, discovery, reconnect/resubscribe, calendars, aggregation, backfill,
+and certification still require implementation and actual account access.
 
 ## Limits and next release
 

@@ -5,8 +5,13 @@ using System.Text.Json;
 using AutopilotQuant.Core.Forward;
 using AutopilotQuant.Core.Replay;
 using AutopilotQuant.Web;
+using AutopilotQuant.T4;
 
 var builder = WebApplication.CreateBuilder(args);
+// Optional, Git-ignored local secrets; environment and CLI values take precedence.
+builder.Configuration.AddJsonFile(Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath,
+    "..", "..", "config", "appsettings.Local.json")), optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables().AddCommandLine(args);
 var port = builder.Configuration.GetValue("Dashboard:Port", 5080);
 if (port is < 1 or > 65535) throw new InvalidOperationException("Dashboard port must be 1–65535.");
 // This release is deliberately local-only; URLs/ASPNETCORE_URLS cannot expose it publicly.
@@ -38,12 +43,17 @@ if (!string.IsNullOrEmpty(adapterKey) && adapterKey == dashboardKey)
     throw new InvalidOperationException("Dashboard and adapter keys must be different.");
 builder.Services.AddSingleton(_ => new PaperSessionStore(directory));
 builder.Services.AddSingleton<PaperSession>();
+builder.Services.AddSingleton(new T4ConfigurationProbe());
+builder.Services.AddSingleton(services => new MarketDataConfiguration(directory,
+    services.GetRequiredService<PaperSession>(), services.GetRequiredService<T4ConfigurationProbe>(),
+    adapterKey, builder.Configuration["MarketData:T4:ApiKey"]));
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OffsetTimestampConverter()));
 builder.Services.AddSingleton(new ReplayArchive(directory));
 builder.Services.AddHostedService<SessionMonitor>();
 var app = builder.Build();
 // Resolve now: a second writer or corrupt state must fail startup, not a later request.
 _ = app.Services.GetRequiredService<PaperSession>();
+_ = app.Services.GetRequiredService<MarketDataConfiguration>();
 app.Logger.LogInformation("Local paper dashboard: http://127.0.0.1:{Port}. Access key location: {KeyPath}", port,
     builder.Configuration["Dashboard:AccessKey"] is null ? keyPath : "Dashboard__AccessKey environment variable");
 
@@ -105,21 +115,18 @@ app.Use(async (context, next) =>
 });
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapGet("/api/state", async (PaperSession session) => new
+app.MapGet("/api/state", async (PaperSession session, MarketDataConfiguration marketData) => new
 {
     session = await session.ViewAsync(),
-    provider = new
-    {
-        configured = !string.IsNullOrEmpty(adapterKey),
-        name = "External data adapter",
-        status = string.IsNullOrEmpty(adapterKey) ? "Not configured" : "Adapter ingress enabled — provider connection not verified",
-        liveRoutingEnabled = false
-    }
+    provider = marketData.View()
 });
+app.MapGet("/api/market-data", (MarketDataConfiguration marketData) => marketData.View());
+app.MapPut("/api/market-data", async (MarketDataSettings settings, MarketDataConfiguration marketData) => await marketData.SaveAsync(settings));
+app.MapPost("/api/market-data/test", async (MarketDataConfiguration marketData, CancellationToken ct) => await marketData.TestAsync(ct));
 app.MapPost("/api/control/{action}", async (string action, PaperSession session) => await session.ControlAsync(action));
 app.MapPut("/api/settings", async (ForwardSettings settings, PaperSession session) => await session.ConfigureAsync(settings));
-app.MapPost("/api/feed/quotes", async (FeedQuote quote, PaperSession session) => await session.AcceptQuoteAsync(quote));
-app.MapPost("/api/feed/bars", async (FeedBar bar, PaperSession session) => await session.AcceptBarAsync(bar));
+app.MapPost("/api/feed/quotes", async (FeedQuote quote, MarketDataConfiguration marketData) => await marketData.AcceptQuoteAsync(quote));
+app.MapPost("/api/feed/bars", async (FeedBar bar, MarketDataConfiguration marketData) => await marketData.AcceptBarAsync(bar));
 app.MapGet("/api/replays", (ReplayArchive archive) => archive.List());
 app.MapGet("/api/replays/{id:guid}", (Guid id, ReplayArchive archive) =>
     archive.Read(id) is { } run ? Results.Json(run) : Results.NotFound());

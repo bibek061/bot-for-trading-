@@ -185,6 +185,18 @@ public sealed class PaperSession
 
     public Task<SessionView> MonitorAsync() => Change(Monitor);
 
+    public Task<SessionView> ResetMarketDataAsync() => Change((s, b, now) =>
+    {
+        if (!s.Paused || b.OpenPositions.Count != 0 || s.Pending.Count != 0)
+            throw new InvalidOperationException("Pause, cancel pending entries and flatten before changing market data.");
+        s.Quotes.Clear();
+        s.Histories.Clear();
+        s.Contracts.Clear();
+        Pause(s, "Market-data configuration changed; fresh quotes and indicator warmup required.", now);
+        AddEvent(s, "Market data", s.PauseReason, now);
+        return Task.CompletedTask;
+    }, monitorFirst: false);
+
     private async Task Monitor(PaperSessionState s, PaperBroker b, DateTimeOffset now)
     {
         var equity = await b.GetAccountEquityAsync(default);
@@ -245,7 +257,7 @@ public sealed class PaperSession
         AddEvent(s, "Paper exit", $"{reason}: {p.Symbol}, net P/L {close.Trade!.NetProfitLoss:F2}.", now);
     }
 
-    private async Task<SessionView> Change(Func<PaperSessionState, PaperBroker, DateTimeOffset, Task> action)
+    private async Task<SessionView> Change(Func<PaperSessionState, PaperBroker, DateTimeOffset, Task> action, bool monitorFirst = true)
     {
         await _gate.WaitAsync();
         try
@@ -255,7 +267,7 @@ public sealed class PaperSession
             var next = JsonSerializer.Deserialize<PaperSessionState>(before, PaperSessionStore.Json)!;
             var broker = Broker(next);
             var now = _clock.GetUtcNow();
-            await Monitor(next, broker, now);
+            if (monitorFirst) await Monitor(next, broker, now);
             await action(next, broker, now);
             next.Broker = broker.CaptureState();
             var after = JsonSerializer.SerializeToUtf8Bytes(next, PaperSessionStore.Json);

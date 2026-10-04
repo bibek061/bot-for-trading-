@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutopilotQuant.Core\AutopilotQuant.Core.csproj" />
+    <ProjectReference Include="..\AutopilotQuant.T4\AutopilotQuant.T4.csproj" />
   </ItemGroup>
 </Project>

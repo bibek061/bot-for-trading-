@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let accessKey = '', state, selectedSymbol = 'MES', currentReplay, polling = false;
+let providerState, marketDataDirty = false, marketDataBusy = false;
 const usd = value => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(value);
 const number = value => new Intl.NumberFormat('en-US', {maximumFractionDigits:2}).format(value);
 const percent = value => `${(value * 100).toFixed(2)}%`;
@@ -21,7 +22,7 @@ $('unlock-form').onsubmit = async event => {
   try {
     const result = await api('state');
     $('access-key').value = ''; $('login').hidden = true; $('workspace').hidden = false;
-    render(result); populateSettings(); await loadReplays();
+    render(result); populateSettings(); populateMarketData(); await loadReplays();
   } catch (error) { text('login-message', error.message); }
 };
 function table(id, rows, empty, columns) {
@@ -40,8 +41,7 @@ function render(result) {
   text('pause-reason', state.pauseReason); text('position-count', state.positions.length);
   text('daily-loss', `${percent(state.dailyLossPct)} / ${percent(state.settings.dailyLossLimitPct)}`);
   text('risk-halt', state.riskHalted ? 'Active' : 'Clear'); text('fees', usd(state.fees));
-  text('provider-status', result.provider.configured ? result.provider.status : 'Market data not configured');
-  text('provider-detail', result.provider.configured ? 'Freshness is checked for each instrument. All fills and protective exits remain simulated.' : 'Connect an authorized adapter to begin forward paper testing. No prices are generated.');
+  renderMarketData(result.provider);
   text('mark-status', state.positions.length === 0 ? 'No open paper exposure' : state.positions.some(p => !state.instruments.find(i => i.symbol === p.symbol)?.fresh) ? 'STALE MARKS · exposure needs fresh data' : 'Marked at latest received bid prices');
   $('resume').disabled = !state.paused || state.riskHalted || !state.instruments.some(i => i.fresh);
   table('positions', state.positions.map(p => { const protection = state.protection.find(x => x.positionId === p.positionId); return [p.symbol,`${p.side} / ${p.quantity}`,number(p.entryPrice),protection ? number(protection.stopPrice) : 'MISSING',protection ? number(protection.targetPrice) : 'MISSING',date(p.openedAtUtc)]; }), 'No open paper positions. New entries require an armed strategy and fresh data.', 6);
@@ -68,9 +68,9 @@ document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () 
   const name = button.dataset.panel;
   document.querySelectorAll('.panel-page').forEach(panel => panel.hidden = panel.id !== name);
   document.querySelectorAll('[data-panel]').forEach(nav => { nav.classList.toggle('active',nav === button); if (nav === button) nav.setAttribute('aria-current','page'); else nav.removeAttribute('aria-current'); });
-  text('breadcrumb', {overview:'Overview',research:'Replay lab',risk:'Risk & settings'}[name]);
-  text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings'}[name]);
-  text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.'}[name]);
+  text('breadcrumb', {overview:'Overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data'}[name]);
+  text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data'}[name]);
+  text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.','market-data':'Prepare your connection. Know where every price comes from.'}[name]);
   if (name === 'overview') renderChart();
 });
 document.querySelectorAll('[data-symbol]').forEach(button => button.onclick = () => {
@@ -143,3 +143,81 @@ function renderChart() {
   ctx.fillStyle='#7288a4';ctx.fillText(time(bars[0].timestamp),0,height-3);ctx.fillText(time(bars.at(-1).timestamp),Math.max(0,plotWidth-60),height-3);
 }
 window.addEventListener('resize',renderChart);
+
+function listText(id, values) {
+  $(id).replaceChildren();
+  values.forEach(value => { const item = document.createElement('li'); item.textContent = value; $(id).append(item); });
+}
+function renderMarketData(provider) {
+  providerState = provider;
+  text('provider-status', provider.status); text('provider-detail', provider.detail);
+  text('provider-tag', provider.settings.provider === 'external' && provider.configured ? 'INGRESS READY' : 'SETUP');
+  text('data-source-name', provider.name);
+  text('t4-key-status', provider.t4ApiKeyPresent ? 'Present · not proof of access' : 'Not set');
+  text('adapter-key-status', provider.adapterKeyPresent ? 'Present' : 'Not set');
+  text('data-readiness', provider.configured ? 'SETTINGS READY' : 'INCOMPLETE');
+  listText('data-missing', provider.missing.length ? provider.missing : ['Required settings are present. Check the actual data source before paper testing.']);
+  text('data-test-outcome', provider.testing ? 'TESTING' : provider.lastTest?.outcome.toUpperCase() || 'NOT TESTED');
+  text('data-test-summary', provider.lastTest?.summary || (provider.testing ? 'Checking simulator login, contracts and quotes…' : 'No T4 check completed for these settings in this server session.'));
+  text('data-test-time', provider.lastTest ? `Checked ${date(provider.lastTest.checkedAt)} · point-in-time result` : '');
+  listText('data-test-markets', (provider.lastTest?.markets || []).map(m => `${m.symbol}: ${m.status}`));
+  updateMarketDataButtons();
+}
+function populateMarketData() {
+  $('data-provider').value = providerState.settings.provider;
+  $('market-bindings').replaceChildren();
+  providerState.settings.instruments.forEach(market => {
+    const group = document.createElement('fieldset'), legend = document.createElement('legend');
+    group.dataset.market = market.symbol; legend.textContent = market.symbol; group.append(legend);
+    const toggle = document.createElement('label'), checkbox = document.createElement('input');
+    toggle.className = 'market-toggle'; checkbox.type = 'checkbox'; checkbox.name = 'enabled'; checkbox.checked = market.enabled;
+    toggle.append(checkbox, document.createTextNode('Enable this instrument')); group.append(toggle);
+    for (const [name, title, placeholder] of [['exchangeId','T4 exchange ID','Exact exchange ID'],['productId','T4 product / contract ID','Exact product ID'],['marketId','Expiring market ID','Exact provider market ID']]) {
+      const label = document.createElement('label'), input = document.createElement('input');
+      label.textContent = title; input.name = name; input.value = market[name]; input.maxLength = 100;
+      input.placeholder = placeholder; input.autocomplete = 'off'; input.spellcheck = false;
+      if (name !== 'marketId') label.className = 't4-field';
+      label.append(input); group.append(label);
+    }
+    $('market-bindings').append(group);
+  });
+  marketDataDirty = false; text('data-form-status','No unsaved changes.'); updateMarketDataFields();
+}
+function updateMarketDataFields() {
+  const provider = $('data-provider').value;
+  text('data-provider-help', provider === 't4-simulator' ? 'Simulator only. A server-side API key and exact T4 IDs are required for the diagnostic check.' : provider === 'external' ? 'Your external adapter must supply authorized quotes and completed bars. The contract ID in each feed request must match the market ID below.' : 'Data ingress is disabled until a provider is selected and configured.');
+  $('market-bindings').hidden = provider === 'none';
+  document.querySelectorAll('.t4-field').forEach(label => label.hidden = provider !== 't4-simulator');
+  document.querySelectorAll('[data-market]').forEach(group => {
+    const enabled = group.querySelector('[name=enabled]').checked;
+    group.querySelectorAll('input:not([type=checkbox])').forEach(input => input.disabled = !enabled);
+  });
+  updateMarketDataButtons();
+}
+function updateMarketDataButtons() {
+  $('market-data-form').querySelectorAll('fieldset, select').forEach(input => input.disabled = marketDataBusy || providerState?.testing);
+  $('save-market-data').disabled = marketDataBusy || providerState?.testing || !marketDataDirty || !state?.paused || state.positions.length > 0 || state.pending.length > 0;
+  $('test-market-data').disabled = marketDataBusy || providerState?.testing || marketDataDirty || !providerState?.configured || providerState.settings.provider !== 't4-simulator' || !state?.paused || state.positions.length > 0;
+}
+$('market-data-form').oninput = () => {
+  marketDataDirty = true; text('data-form-status','Unsaved changes. Save before testing; the current connection settings have not changed.'); updateMarketDataFields();
+};
+$('market-data-form').onsubmit = async event => {
+  event.preventDefault();
+  const settings = {provider:$('data-provider').value, instruments:[...document.querySelectorAll('[data-market]')].map(group => ({
+    symbol:group.dataset.market, enabled:group.querySelector('[name=enabled]').checked,
+    ...Object.fromEntries(['exchangeId','productId','marketId'].map(name => [name,group.querySelector(`[name=${name}]`).value.trim()]))
+  }))};
+  marketDataBusy = true; updateMarketDataButtons();
+  try {
+    renderMarketData(await api('market-data',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)}));
+    populateMarketData(); await refresh(); message('Market-data settings saved. Fresh quotes and indicator warmup are required before resuming.');
+  } catch (error) { message(error.message); }
+  finally { marketDataBusy = false; updateMarketDataButtons(); }
+};
+$('test-market-data').onclick = async () => {
+  marketDataBusy = true; updateMarketDataButtons(); text('data-test-summary','Checking simulator access… This takes up to 15 seconds.');
+  try { renderMarketData(await api('market-data/test',{method:'POST'})); }
+  catch (error) { message(error.message); }
+  finally { marketDataBusy = false; updateMarketDataButtons(); await refresh(); }
+};
