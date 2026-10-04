@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Autopilot Quant is an educational, paper-only futures research prototype.">
+  <title>Autopilot Quant | Paper-Trading Research</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #101820;
+      color: #eaf0f4;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; line-height: 1.6; }
+    header, main, footer { width: min(920px, calc(100% - 2rem)); margin: auto; }
+    header { padding: 4rem 0 2rem; }
+    h1 { font-size: clamp(2.4rem, 8vw, 4.5rem); line-height: 1.05; margin: 0 0 1rem; }
+    h2 { margin-top: 2.5rem; }
+    p, li { color: #c5d0d8; }
+    .eyebrow { color: #62d6a5; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .notice { border: 1px solid #e8a94b; border-left-width: 5px; border-radius: .5rem; padding: 1rem 1.2rem; background: #29251d; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+    .card { background: #182630; border: 1px solid #30434f; border-radius: .6rem; padding: 1rem 1.2rem; }
+    a { color: #72c9ff; }
+    code { overflow-wrap: anywhere; color: #a7e6cb; }
+    footer { border-top: 1px solid #30434f; margin-top: 3rem; padding: 1.5rem 0 3rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Research prototype · Paper mode only</p>
+    <h1>Autopilot Quant</h1>
+    <p>A .NET project for exploring a guarded futures research workflow: historical bars, market-regime classification, paper signals, risk checks, and simulated MES/MNQ fills.</p>
+    <p><a href="https://github.com/bibek061/bot-for-trading-">View the source on GitHub</a></p>
+  </header>
+  <main>
+    <section class="notice" aria-labelledby="warning-heading">
+      <h2 id="warning-heading">Important limitations</h2>
+      <p>This is experimental software, not financial advice or a recommendation to trade. Strategy rules and sample results are not evidence of profitability. The included market-data CSV is fabricated synthetic data, not historical exchange data. T4 market data and live order routing are not implemented; live orders are disabled.</p>
+    </section>
+
+    <section aria-labelledby="workflow-heading">
+      <h2 id="workflow-heading">Current workflow</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Replay</h3>
+          <p>Read OHLCV CSV bars with explicit timestamps and replay them in chronological order using the configured trading timezone.</p>
+        </article>
+        <article class="card">
+          <h3>Classify</h3>
+          <p>Use an initial ATR(14), EMA(20), and EMA(50) baseline to label bars as risk-off, trend, chop, or insufficient data.</p>
+        </article>
+        <article class="card">
+          <h3>Simulate safely</h3>
+          <p>Evaluate a long-only EMA20 pullback/reclaim candidate, run risk checks, and simulate fees and slippage in paper mode.</p>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="try-heading">
+      <h2 id="try-heading">Try the synthetic example</h2>
+      <p>With the .NET 10 SDK installed, clone the repository and run:</p>
+      <pre><code>dotnet test
+dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synthetic.csv --report-json data\sample-report.json</code></pre>
+      <p>The output is a software smoke test only. Do not interpret it as a backtest or performance claim.</p>
+    </section>
+
+    <section aria-labelledby="safety-heading">
+      <h2 id="safety-heading">Safety and status</h2>
+      <ul>
+        <li>Live T4 orders are not connected or enabled.</li>
+        <li>Short entries remain locked by default.</li>
+        <li>Risk limits and regime thresholds require validation with trustworthy historical data.</li>
+        <li>Replay currently simulates fills; it does not model queue position, partial fills, market impact, or exchange outages.</li>
+      </ul>
+    </section>
+  </main>
+  <footer>
+    <p>Released under the <a href="https://github.com/bibek061/bot-for-trading-/blob/main/LICENSE">MIT License</a>. See the repository README for implementation details and current project status.</p>
+  </footer>
+</body>
+</html>
