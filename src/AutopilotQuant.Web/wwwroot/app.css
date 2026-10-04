@@ -52,3 +52,8 @@ select:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
 .reference-card .chart-attribution {font-size:11px;line-height:1.6}
 @media(max-width:1100px) and (min-width:601px) {.sidebar nav {flex-wrap:wrap}}
 @media(max-width:600px) {.reference-links {grid-template-columns:1fr}.reference-frame {height:480px}.reference-card .card-heading {align-items:start;flex-direction:column}}
+.public-data-summary {display:flex;gap:30px;flex-wrap:wrap;margin:22px 0;color:#8093ae;font-size:11px}
+.public-data-summary strong {display:block;color:#dce6f3;font-weight:500;margin-top:5px}
+.public-data-actions {align-items:center;margin-bottom:15px}.public-data-actions label {font-size:11px;color:#a7b8cb}
+.public-data-card .table-scroll {margin-top:20px}.public-data-card a {color:#9bbbe8}
+@media(max-width:600px) {.public-data-summary {gap:18px}.public-data-card .card-heading {align-items:start;flex-direction:column}}

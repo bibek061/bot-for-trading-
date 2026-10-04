@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const referenceChart = new TradingViewReference.ReferenceChart(document);
 let accessKey = '', state, selectedSymbol = 'MES', currentReplay, polling = false;
 let providerState, marketDataDirty = false, marketDataBusy = false;
+let publicDataState, publicRefreshBusy = false, publicAutoNext = 0;
 const usd = value => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(value);
 const number = value => new Intl.NumberFormat('en-US', {maximumFractionDigits:2}).format(value);
 const percent = value => `${(value * 100).toFixed(2)}%`;
@@ -16,7 +17,7 @@ async function api(path, options = {}) {
   if (!response.ok) { if (response.status === 401) lock(); throw new Error(body.error || `Request failed (${response.status})`); }
   return body;
 }
-function lock() { accessKey = ''; referenceChart.close(); $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
+function lock() { accessKey = ''; referenceChart.close(); $('public-auto').checked = false; $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
 $('lock').onclick = lock;
 $('unlock-form').onsubmit = async event => {
   event.preventDefault(); accessKey = $('access-key').value.trim();
@@ -43,6 +44,7 @@ function render(result) {
   text('daily-loss', `${percent(state.dailyLossPct)} / ${percent(state.settings.dailyLossLimitPct)}`);
   text('risk-halt', state.riskHalted ? 'Active' : 'Clear'); text('fees', usd(state.fees));
   renderMarketData(result.provider);
+  renderPublicData(result.publicData);
   text('mark-status', state.positions.length === 0 ? 'No open paper exposure' : state.positions.some(p => !state.instruments.find(i => i.symbol === p.symbol)?.fresh) ? 'STALE MARKS · exposure needs fresh data' : 'Marked at latest received bid prices');
   $('resume').disabled = !state.paused || state.riskHalted || !state.instruments.some(i => i.fresh);
   table('positions', state.positions.map(p => { const protection = state.protection.find(x => x.positionId === p.positionId); return [p.symbol,`${p.side} / ${p.quantity}`,number(p.entryPrice),protection ? number(protection.stopPrice) : 'MISSING',protection ? number(protection.targetPrice) : 'MISSING',date(p.openedAtUtc)]; }), 'No open paper positions. New entries require an armed strategy and fresh data.', 6);
@@ -60,6 +62,8 @@ async function refresh() {
   catch (error) {
     text('connection', '● Server unavailable'); $('connection').classList.add('negative');
     $('resume').disabled = true; text('quote-state', 'UNVERIFIED');
+    $('public-auto').checked = false; text('public-data-status', 'UNVERIFIED');
+    table('public-quotes', [], 'Server unavailable. Refresh after reconnecting to verify quote timestamps.', 7);
     text('mark-status', 'SERVER UNREACHABLE · displayed values may be stale');
     message(error.message);
   } finally { polling = false; }
@@ -73,6 +77,7 @@ document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () 
   text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data',tradingview:'TradingView research'}[name]);
   text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.','market-data':'Prepare your connection. Know where every price comes from.',tradingview:'Explore futures charts and broader market context.'}[name]);
   if (name !== 'tradingview') referenceChart.close();
+  if (name !== 'market-data') $('public-auto').checked = false;
   if (name === 'overview') renderChart();
 });
 document.querySelectorAll('[data-symbol]').forEach(button => button.onclick = () => {
@@ -234,3 +239,38 @@ for (const action of ['connect','disconnect']) $(action+'-market-data').onclick 
   catch (error) { message(error.message); }
   finally { marketDataBusy = false; updateMarketDataButtons(); }
 };
+
+function renderPublicData(data) {
+  if (!data) return;
+  publicDataState = data;
+  text('public-key-status', data.secretPresent ? 'Present on server' : 'Not configured');
+  text('public-account', data.accountLabel || 'Not checked');
+  text('public-response-time', data.lastSuccessAt ? date(data.lastSuccessAt) : '—');
+  text('public-data-status', data.status.replaceAll('-', ' ').toUpperCase());
+  text('public-data-message', data.message);
+  const cooldown = data.nextRequestAt && new Date(data.nextRequestAt).getTime() > Date.now();
+  text('public-retry-time', cooldown ? `Next request allowed after ${time(data.nextRequestAt)}.` : '');
+  $('public-refresh').disabled = !data.secretPresent || publicRefreshBusy || data.refreshing || cooldown;
+  $('public-refresh').textContent = publicRefreshBusy || data.refreshing ? 'Requesting quotes…' : 'Refresh Public.com quotes';
+  $('public-auto').disabled = !data.secretPresent;
+  const price = (value, fresh) => value == null ? '—' : `${number(value)}${fresh ? '' : ' · stale'}`;
+  const stamp = value => value ? date(value) : 'Unknown';
+  table('public-quotes', (data.quotes || []).map(q => [q.symbol,
+    price(q.last, q.lastFresh), stamp(q.lastAt), price(q.bid, q.bidFresh), stamp(q.bidAt),
+    price(q.ask, q.askFresh), stamp(q.askAt)]), 'Refresh to request Public.com ETF snapshots. No prices are generated.', 7);
+  if (!['ready','refreshing','snapshot'].includes(data.status)) $('public-auto').checked = false;
+}
+async function refreshPublicQuotes() {
+  if (!accessKey || publicRefreshBusy || !publicDataState?.secretPresent) return;
+  publicRefreshBusy = true; renderPublicData(publicDataState);
+  try { const result = await api('market-data/public/refresh', {method:'POST'}); if (accessKey) renderPublicData(result); }
+  catch (error) { $('public-auto').checked = false; message(error.message); }
+  finally { publicRefreshBusy = false; publicAutoNext = Date.now() + 15000; if (publicDataState && accessKey) renderPublicData(publicDataState); }
+}
+$('public-refresh').onclick = refreshPublicQuotes;
+$('public-auto').onchange = () => { if ($('public-auto').checked) refreshPublicQuotes(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) $('public-auto').checked = false; });
+setInterval(() => {
+  if ($('public-auto').checked && !document.hidden && !$('market-data').hidden && Date.now() >= publicAutoNext
+      && (!publicDataState?.nextRequestAt || Date.now() >= new Date(publicDataState.nextRequestAt).getTime())) refreshPublicQuotes();
+}, 1000);

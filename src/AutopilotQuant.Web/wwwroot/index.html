@@ -66,9 +66,20 @@
         </section>
 
         <section id="market-data" class="panel-page" hidden aria-label="Market data configuration">
+          <article class="card public-data-card">
+            <div class="card-heading"><div><h2>Public.com market context</h2><p>SPY / QQQ ETF quote snapshots · read-only API connection</p></div><span id="public-data-status" class="tag">NOT CONFIGURED</span></div>
+            <p class="muted">Public.com supplies equity quotes for market research. SPY and QQQ prices are separate from MES/MNQ futures and never feed this bot’s signals, fills or account marks.</p>
+            <div class="public-data-summary"><span>Server secret <strong id="public-key-status">—</strong></span><span>Quote access <strong id="public-account">Not checked</strong></span><span>Last valid response <strong id="public-response-time">—</strong></span></div>
+            <div class="data-actions public-data-actions"><button id="public-refresh" type="button" class="primary">Refresh Public.com quotes</button><label class="chart-toggle"><input id="public-auto" type="checkbox"> Refresh every 15 seconds while this page is visible</label></div>
+            <p id="public-data-message" class="micro" role="status">No Public.com request has been made.</p>
+            <p id="public-retry-time" class="micro"></p>
+            <div class="table-scroll"><table><thead><tr><th>ETF</th><th>Last</th><th>Trade timestamp</th><th>Bid</th><th>Bid timestamp</th><th>Ask</th><th>Ask timestamp</th></tr></thead><tbody id="public-quotes"></tbody></table></div>
+            <p class="micro">Each price uses its own source timestamp. Values over 30 seconds old, with unknown times or over two seconds ahead of the server clock are marked stale. After hours and weekends can return older snapshots. Automatic refresh stops when you leave this page, hide the tab or lock the workspace.</p>
+            <p class="micro">No balances, holdings or orders are requested. <a href="https://public.com/api/docs/resources/market-data/get-quotes" target="_blank" rel="noopener noreferrer">Public.com quote API ↗</a></p>
+          </article>
           <div class="two-column market-data-grid">
             <article class="card">
-              <div class="card-heading"><h2>Data source & contracts</h2><span class="tag">PAPER ONLY</span></div>
+              <div class="card-heading"><h2>Futures data source & contracts</h2><span class="tag">PAPER ONLY</span></div>
               <p class="muted">Save your setup now and add access when it is available. Pause and flatten before changing providers or contracts; saving clears quotes and indicator history.</p>
               <form id="market-data-form" class="market-data-form">
                 <label for="data-provider">Market-data provider</label>

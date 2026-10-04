@@ -10,7 +10,7 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It supports histori
 - Replay uses explicit-price simulated fills, configured slippage/fees, and the configured trading timezone (default `America/New_York`).
 - Replay closes open positions at timezone-local calendar-day boundaries and at the end of input.
 - The synthetic CSV under the test project is fabricated and used only for automated tests; it is not historical market data or a performance result.
-- No licensed market-data provider or API account is currently configured. The public website lets users preview a CSV selected from their own device; its JavaScript does not upload the file.
+- Authorized futures-provider access is still required. The local dashboard supports Public.com equity reference quotes with server-only credentials; these do not feed futures execution. The public website lets users preview a CSV selected from their own device; its JavaScript does not upload the file.
 - Never put provider credentials in browser JavaScript, static website files, or Git; use local environment variables or server-side secret storage.
 - Strategy thresholds are research baselines, not validated trading advice.
 
@@ -27,6 +27,7 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It supports histori
 - Continuous T4 simulator connection with heartbeat, bounded queues, ordered quote batches, reconnect/invalidation, historical warmup and five-minute completed-bar refresh. Forming candles are display-only.
 - TradingView Lightweight Charts with crosshair, zoom/pan, volume, chart EMA overlays, display aggregation and fullscreen.
 - A separate [TradingView research page](TRADINGVIEW.md) with direct MES/MNQ chart links and an optional isolated SPY/QQQ ETF widget. TradingView offers no public quote API; these reference displays do not feed the bot.
+- [Public.com reference quotes](PUBLIC_API.md) authenticate on the server and display SPY/QQQ last, bid and ask with source timestamps and independent freshness labels. Optional polling is throttled and stops when the page is inactive. No balances or orders are requested.
 - Forward paper entries wait for a later quote and simulate buys at ask plus slippage; marked exposure and exits use bid. Simulated stops/targets continue while entries are paused.
 - Atomic local state snapshots, single-writer protection, paused restart recovery, daily loss/drawdown halts, scheduled paper flatten, and an independent staleness monitor.
 - Saved CSV replay reports on the local server; replay uploads do not alter the forward account. The legacy replay fill assumptions remain explicitly labeled.

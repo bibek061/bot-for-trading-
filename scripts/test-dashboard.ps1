@@ -27,6 +27,8 @@ function Start-TestServer([bool]$WithAdapter) {
     $info.Environment['Dashboard__AccessKey'] = $dashboardHeaders['X-Dashboard-Key']
     $info.Environment['MarketData__AdapterKey'] = $(if ($WithAdapter) { $adapterHeaders['X-Adapter-Key'] } else { '' })
     $info.Environment['MarketData__T4__ApiKey'] = ''
+    $info.Environment['MarketData__Public__Secret'] = ''
+    $info.Environment['MarketData__Public__AccountId'] = ''
     $info.Environment['Logging__LogLevel__Default'] = 'Warning'
     $process = [Diagnostics.Process]::Start($info)
     for ($attempt = 0; $attempt -lt 50; $attempt++) {
@@ -51,6 +53,10 @@ try {
     Check ((Invoke-WebRequest "$url/tradingview-reference.js" -SkipHttpErrorCheck).StatusCode -eq 200) 'TradingView integration asset is served locally'
     Check ((Invoke-WebRequest "$url/api/state" -Headers (@{'Origin'='https://www.tradingview-widget.com'} + $dashboardHeaders) -SkipHttpErrorCheck).StatusCode -eq 403) 'TradingView frame origin cannot access local account API even with an operator header'
     Check ((Invoke-WebRequest "$url/api/state" -SkipHttpErrorCheck).StatusCode -eq 401) 'Account API requires authentication'
+    Check ((Invoke-WebRequest "$url/api/market-data/public/refresh" -Method Post -SkipHttpErrorCheck).StatusCode -eq 401) 'Public quote refresh requires dashboard authentication'
+    Check ((Invoke-WebRequest "$url/api/market-data/public" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot access Public reference data'
+    $publicData = Invoke-RestMethod "$url/api/market-data/public/refresh" -Method Post -Headers $dashboardHeaders
+    Check (!$publicData.secretPresent -and $publicData.status -eq 'not-configured' -and !$publicData.futuresSupported -and !$publicData.liveRoutingEnabled) 'Public quotes stay unconfigured without a server secret and cannot enable futures or live orders'
     Check ((Invoke-WebRequest "$url/api/state" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot read account API'
     Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body '{}' -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 503) 'Feed disabled without configured adapter'
     Check ((Invoke-WebRequest "$url/api/control/pause" -Method Post -Headers (@{'Origin'='https://untrusted.example'} + $dashboardHeaders) -SkipHttpErrorCheck).StatusCode -eq 403) 'Cross-origin command rejected'

@@ -45,6 +45,9 @@ builder.Services.AddSingleton(_ => new PaperSessionStore(directory));
 builder.Services.AddSingleton<PaperSession>();
 builder.Services.AddSingleton(new T4ConfigurationProbe());
 builder.Services.AddSingleton(new T4HistoryClient(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })));
+builder.Services.AddSingleton(new PublicMarketDataClient(
+    new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }),
+    builder.Configuration["MarketData:Public:Secret"], builder.Configuration["MarketData:Public:AccountId"]));
 builder.Services.AddSingleton<T4StreamingClient>();
 builder.Services.AddSingleton<T4MarketDataService>();
 builder.Services.AddHostedService(services => services.GetRequiredService<T4MarketDataService>());
@@ -120,11 +123,14 @@ app.Use(async (context, next) =>
 });
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapGet("/api/state", async (PaperSession session, MarketDataConfiguration marketData) => new
+app.MapGet("/api/state", async (PaperSession session, MarketDataConfiguration marketData, PublicMarketDataClient publicData) => new
 {
     session = await session.ViewAsync(),
-    provider = marketData.View()
+    provider = marketData.View(),
+    publicData = publicData.View()
 });
+app.MapGet("/api/market-data/public", (PublicMarketDataClient publicData) => publicData.View());
+app.MapPost("/api/market-data/public/refresh", async (PublicMarketDataClient publicData, CancellationToken ct) => await publicData.RefreshAsync(ct));
 app.MapGet("/api/market-data", (MarketDataConfiguration marketData) => marketData.View());
 app.MapPut("/api/market-data", async (MarketDataSettings settings, MarketDataConfiguration marketData) => await marketData.SaveAsync(settings));
 app.MapPost("/api/market-data/test", async (MarketDataConfiguration marketData, CancellationToken ct) => await marketData.TestAsync(ct));

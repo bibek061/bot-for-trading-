@@ -57,6 +57,8 @@ operation, prefer a state directory outside OneDrive or other syncing software.
   5m/15m/1h display intervals and fullscreen. The strategy remains on completed five-minute bars.
 - A separate [TradingView research page](TRADINGVIEW.md) links MES/MNQ futures charts and
   optionally embeds SPY/QQQ ETF context. Widget data never feeds paper execution.
+- [Public.com ETF reference quotes](PUBLIC_API.md) with server-only authentication,
+  individual last/bid/ask timestamps, stale labels, throttled refresh and sanitized errors.
 - Atomic file snapshots are flushed before replacement/publication. Failed persistence
   blocks further mutations until restart. One writer per directory; corrupt state fails startup.
 - CSV uploads go to the local server, which saves reports but not raw CSVs. Limits are

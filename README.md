@@ -16,6 +16,10 @@ reference widget with indicators and drawing tools. These ETFs are market contex
 TradingView offers no public quote API, and its free widgets do not include CME futures.
 See [TradingView setup and data limits](docs/TRADINGVIEW.md).
 
+The **Public.com market context** panel adds authenticated SPY/QQQ quote snapshots with
+per-price timestamps, stale labels and optional 15-second refresh. Credentials stay on
+the local server. [Public.com setup](docs/PUBLIC_API.md) is separate from futures execution.
+
 ```powershell
 ./scripts/start-dashboard.ps1
 ```
