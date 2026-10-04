@@ -9,6 +9,5 @@ secrets.json
 config/appsettings.Local.json
 data/*
 !data/.gitkeep
-!data/sample_mes_5m_synthetic.csv
 logs/*
 !logs/.gitkeep

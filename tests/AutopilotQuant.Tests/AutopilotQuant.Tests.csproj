@@ -12,7 +12,7 @@
     <ProjectReference Include="..\..\src\AutopilotQuant.Core\AutopilotQuant.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\data\sample_mes_5m_synthetic.csv"
+    <None Include="Fixtures\sample_mes_5m_synthetic.csv"
           Link="Fixtures\sample_mes_5m_synthetic.csv"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

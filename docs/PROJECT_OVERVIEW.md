@@ -9,8 +9,8 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It currently suppor
 - Each paper entry is an independent position that is closed by position ID.
 - Replay uses explicit-price simulated fills, configured slippage/fees, and the configured trading timezone (default `America/New_York`).
 - Replay closes open positions at timezone-local calendar-day boundaries and at the end of input.
-- The included CSV is synthetic and must not be treated as historical market data or a performance result.
-- No licensed market-data provider or API account is currently configured. The public website chart loads only the synthetic fixture and its generated replay report.
+- The synthetic CSV under the test project is fabricated and used only for automated tests; it is not historical market data or a performance result.
+- No licensed market-data provider or API account is currently configured. The public website lets users preview a CSV selected from their own device; its JavaScript does not upload the file.
 - Never put provider credentials in browser JavaScript, static website files, or Git; use local environment variables or server-side secret storage.
 - Strategy thresholds are research baselines, not validated trading advice.
 
@@ -21,14 +21,14 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It currently suppor
 - Long-only entry candidate when an uptrend pulls back to and reclaims EMA20 on completed bars.
 - Paper coordinator prevents duplicate/out-of-order bar processing and runs risk checks before entries.
 - CSV replay runner sorts bars, applies configured timezone boundaries, simulates fills, and exports JSON run/trade reports.
-- GitHub Pages landing page documents the project, limitations, and sample replay.
+- GitHub Pages page previews user-selected CSV files locally and documents the project limitations; it does not include market data or replay results.
 
 ## Historical replay
 
-CSV columns: `Symbol,Timestamp,Open,High,Low,Close,Volume`. Timestamp values must be ISO 8601 with `Z` or an explicit UTC offset.
+CSV columns: `Symbol,Timestamp,Open,High,Low,Close,Volume`. Timestamp values must be ISO 8601 with `Z` or an explicit UTC offset. Use data whose provider terms authorize your intended use.
 
     dotnet test
-    dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synthetic.csv --report-json data\sample-report.json
+    dotnet run --project src\AutopilotQuant.Runner -- replay C:\path\to\licensed-bars.csv --report-json C:\path\to\replay-report.json
 
 Use real historical data only when authorized and correctly licensed. Results are highly dependent on data quality and simplified execution assumptions; they do not establish profitability or predict future performance.
 

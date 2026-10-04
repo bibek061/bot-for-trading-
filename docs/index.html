@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Autopilot Quant is an educational, paper-only futures research prototype.">
-  <title>Autopilot Quant | Paper-Trading Research</title>
+  <meta name="description" content="Preview your own licensed futures OHLCV data locally and run Autopilot Quant paper replay on your computer.">
+  <title>Autopilot Quant | Local Paper Replay</title>
   <style>
     :root {
       color-scheme: dark;
@@ -24,110 +24,200 @@
     .eyebrow { color: #62d6a5; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
     .warning { border: 1px solid #e8a94b; border-left-width: 5px; border-radius: .5rem; padding: 1rem 1.2rem; background: #29251d; }
     .warning p { margin-bottom: 0; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
-    .card, .panel { background: #182630; border: 1px solid #30434f; border-radius: .6rem; padding: 1rem 1.2rem; }
-    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: .75rem; }
+    .panel { background: #182630; border: 1px solid #30434f; border-radius: .6rem; padding: 1rem 1.2rem; margin: 1rem 0; }
+    .privacy { border-left: 3px solid #62d6a5; padding-left: .85rem; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+    input, select, button { color: #eaf0f4; background: #101820; border: 1px solid #506674; border-radius: .4rem; padding: .65rem; }
+    button { cursor: pointer; }
+    button:hover, input:focus, select:focus { border-color: #62d6a5; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
     .metric { background: #101820; border-radius: .5rem; padding: .85rem; }
     .metric dt { color: #9cabb5; font-size: .85rem; }
-    .metric dd { margin: .25rem 0 0; font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .badge { display: inline-block; border: 1px solid #e8a94b; border-radius: 99px; padding: .1rem .65rem; color: #ffd28b; font-size: .82rem; font-weight: 700; }
-    .notice { border-left: 3px solid #e8a94b; padding-left: .85rem; }
-    .chart-wrap { height: 310px; width: 100%; }
+    .metric dd { margin: .25rem 0 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .chart-wrap { height: 320px; width: 100%; }
     canvas { width: 100%; height: 100%; }
-    .links { display: flex; flex-wrap: wrap; gap: 1rem; }
-    a { color: #72c9ff; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #30434f; white-space: nowrap; }
+    th { color: #9cabb5; }
+    pre { overflow-x: auto; background: #101820; padding: 1rem; border-radius: .4rem; }
     code { overflow-wrap: anywhere; color: #a7e6cb; }
+    a { color: #72c9ff; }
     footer { border-top: 1px solid #30434f; margin-top: 3rem; padding: 1.5rem 0 3rem; }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <header>
-    <p class="eyebrow">Research prototype · Paper mode only</p>
+    <p class="eyebrow">Local paper replay · Bring your own licensed data</p>
     <h1>Autopilot Quant</h1>
-    <p>A .NET project for exploring a guarded futures research workflow: historical bars, market-regime classification, paper signals, risk checks, and simulated MES/MNQ fills.</p>
-    <p><a href="https://github.com/bibek061/bot-for-trading-">View the source on GitHub</a></p>
+    <p>Inspect a futures OHLCV CSV in this page, then run the strategy, risk checks, and paper replay locally with the .NET app. No market-data provider is bundled.</p>
+    <p><a href="https://github.com/bibek061/bot-for-trading-">View the source and get the local replay app on GitHub</a></p>
   </header>
   <main>
     <section class="warning" aria-labelledby="warning-heading">
       <h2 id="warning-heading">Important limitations</h2>
-      <p><strong>This is experimental software, not financial advice or a recommendation to trade.</strong> The chart and results below use fabricated synthetic data, not market prices; they are a software demo, not evidence of profitability. No market-data provider or API is connected. T4 market data and live order routing are not implemented; live orders are disabled.</p>
+      <p><strong>This is experimental software, not financial advice or a recommendation to trade.</strong> Strategy rules and replay results do not demonstrate profitability. Use data you are licensed to use. No data provider API is connected; T4 market data and live order routing are not implemented. Live orders are disabled.</p>
     </section>
 
-    <section aria-labelledby="data-heading">
-      <h2 id="data-heading">Dataset and sample replay <span class="badge">SYNTHETIC DEMO</span></h2>
-      <p>This project does not yet have licensed real-market data or a provider API. The displayed 5-minute MES-like bars were fabricated solely to test the CSV loader, signal path, risk checks, simulated fill, and replay report. Do not use these values to make trading decisions.</p>
-      <div id="data-status" class="notice" role="status" aria-live="polite">Loading the checked-in synthetic sample and its replay report…</div>
-      <div id="sample-results" hidden>
-        <div class="metrics" aria-label="Synthetic replay summary">
-          <dl class="metric"><dt>Bars in sample</dt><dd id="bar-count">—</dd></dl>
-          <dl class="metric"><dt>Paper orders</dt><dd id="order-count">—</dd></dl>
-          <dl class="metric"><dt>Closed trades</dt><dd id="trade-count">—</dd></dl>
-          <dl class="metric"><dt>Demo net P/L</dt><dd id="net-pnl">—</dd></dl>
-          <dl class="metric"><dt>Ending demo equity</dt><dd id="ending-equity">—</dd></dl>
+    <section aria-labelledby="file-heading">
+      <h2 id="file-heading">Inspect your market data</h2>
+      <p>Choose a CSV on your device with these columns: <code>Symbol,Timestamp,Open,High,Low,Close,Volume</code>. Timestamps must be ISO 8601 with <code>Z</code> or an explicit UTC offset. The preview and chart are produced locally in this browser tab.</p>
+      <p class="privacy"><strong>Privacy:</strong> the selected CSV is read locally by this page. It is not uploaded, stored, or sent to a server. The public site contains no sample prices or replay results.</p>
+      <div class="panel">
+        <div class="controls">
+          <label for="csv-file">Select a licensed CSV file</label>
+          <input id="csv-file" type="file" accept=".csv,text/csv">
+          <label for="symbol-select">Chart symbol</label>
+          <select id="symbol-select" disabled></select>
         </div>
-        <article class="panel">
-          <h3 id="chart-title">Synthetic MES close prices</h3>
-          <p id="chart-range"></p>
-          <div class="chart-wrap">
-            <canvas id="price-chart" role="img" aria-labelledby="chart-title" aria-describedby="chart-range">A line chart of fabricated sample close prices.</canvas>
+        <p id="data-status" role="status" aria-live="polite">No file selected. Choose a CSV to inspect it locally.</p>
+        <div id="data-results" hidden>
+          <div class="metrics" aria-label="Selected dataset summary">
+            <dl class="metric"><dt>Bars</dt><dd id="bar-count">—</dd></dl>
+            <dl class="metric"><dt>Symbols</dt><dd id="symbol-count">—</dd></dl>
+            <dl class="metric"><dt>First timestamp</dt><dd id="first-time">—</dd></dl>
+            <dl class="metric"><dt>Last timestamp</dt><dd id="last-time">—</dd></dl>
           </div>
-          <div class="links">
-            <a href="./data/sample_mes_5m_synthetic.csv" download>Download synthetic sample CSV</a>
-            <a href="./data/sample-replay-report.json" download>Download sample replay report (JSON)</a>
-          </div>
-        </article>
-        <p class="notice">The displayed replay metrics are generated by the current paper simulator using its default fee and slippage settings. The input is synthetic; the attractive-looking result has no predictive or investment meaning.</p>
+          <article class="panel">
+            <h3 id="chart-title">Close price preview</h3>
+            <p id="chart-range"></p>
+            <div class="chart-wrap">
+              <canvas id="price-chart" role="img" aria-labelledby="chart-title" aria-describedby="chart-range">A line chart of the selected CSV close prices.</canvas>
+            </div>
+          </article>
+          <article class="panel">
+            <h3>First rows</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Symbol</th><th>Timestamp</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr></thead>
+                <tbody id="preview-rows"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
       </div>
+    </section>
+
+    <section aria-labelledby="run-heading">
+      <h2 id="run-heading">Run the actual paper replay locally</h2>
+      <p>The browser preview does not run strategy logic or calculate performance. Clone the source, install the .NET 10 SDK, then point the replay runner at your own licensed CSV:</p>
+      <pre><code>git clone https://github.com/bibek061/bot-for-trading-.git
+cd bot-for-trading-
+dotnet test
+dotnet run --project src\AutopilotQuant.Runner -- replay "C:\path\to\your-data.csv" --report-json "C:\path\to\replay-report.json"</code></pre>
+      <p>The paper runner processes the file locally, applies configured risk checks and simulated costs, and writes the report to your chosen local path. It does not upload bars or reports.</p>
     </section>
 
     <section aria-labelledby="workflow-heading">
-      <h2 id="workflow-heading">Current workflow</h2>
-      <div class="grid">
-        <article class="card">
-          <h3>Replay</h3>
-          <p>Read OHLCV CSV bars with explicit timestamps and replay them in chronological order using the configured trading timezone.</p>
-        </article>
-        <article class="card">
-          <h3>Classify</h3>
-          <p>Use an initial ATR(14), EMA(20), and EMA(50) baseline to label bars as risk-off, trend, chop, or insufficient data.</p>
-        </article>
-        <article class="card">
-          <h3>Simulate safely</h3>
-          <p>Evaluate a long-only EMA20 pullback/reclaim candidate, run risk checks, and simulate fees and slippage in paper mode.</p>
-        </article>
-      </div>
-    </section>
-
-    <section aria-labelledby="try-heading">
-      <h2 id="try-heading">Run the sample yourself</h2>
-      <p>With the .NET 10 SDK installed, clone the repository and run:</p>
-      <pre><code>dotnet test
-dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synthetic.csv --report-json data\sample-report.json</code></pre>
-      <p>The output is a software smoke test only, not a real-market backtest or performance claim.</p>
-    </section>
-
-    <section aria-labelledby="safety-heading">
-      <h2 id="safety-heading">Safety and next steps</h2>
+      <h2 id="workflow-heading">What the local runner does</h2>
       <ul>
-        <li>Live T4 orders are not connected or enabled.</li>
-        <li>Short entries remain locked by default.</li>
-        <li>Real data requires a licensed data-provider account; API credentials must stay server-side or in secret storage, never in public website code or Git.</li>
-        <li>Risk limits and regime thresholds require validation with trustworthy historical data.</li>
-        <li>Replay does not model queue position, partial fills, market impact, or all exchange fees and outages.</li>
+        <li>Classifies regimes using the current ATR(14), EMA(20), and EMA(50) research baseline.</li>
+        <li>Evaluates the long-only EMA20 pullback/reclaim signal on completed bars.</li>
+        <li>Checks daily-loss, drawdown, connection, and open-position limits before paper entries.</li>
+        <li>Simulates MES/MNQ fills, configured slippage and fees, and exports run and trade results.</li>
       </ul>
+      <p>Replay is simplified: it does not model queue position, partial fills, market impact, all exchange fees, or outages. Test assumptions with trustworthy out-of-sample data.</p>
     </section>
   </main>
   <footer>
-    <p>Released under the <a href="https://github.com/bibek061/bot-for-trading-/blob/main/LICENSE">MIT License</a>. See the <a href="https://github.com/bibek061/bot-for-trading-/blob/main/README.md">repository README</a> for implementation details and project status.</p>
+    <p>Released under the <a href="https://github.com/bibek061/bot-for-trading-/blob/main/LICENSE">MIT License</a>. Read the <a href="https://github.com/bibek061/bot-for-trading-/blob/main/README.md">README</a> and <a href="https://github.com/bibek061/bot-for-trading-/blob/main/docs/PROJECT_OVERVIEW.md">project overview</a> for current status and limitations.</p>
   </footer>
 
   <script>
-    const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+    const requiredColumns = ["Symbol", "Timestamp", "Open", "High", "Low", "Close", "Volume"];
+    const fileInput = document.getElementById("csv-file");
+    const symbolSelect = document.getElementById("symbol-select");
     const status = document.getElementById("data-status");
-    const results = document.getElementById("sample-results");
+    const results = document.getElementById("data-results");
+    let bars = [];
 
-    function drawChart(bars) {
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const character = text[i];
+        if (character === '"') {
+          if (quoted && text[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            quoted = !quoted;
+          }
+        } else if (character === "," && !quoted) {
+          row.push(field);
+          field = "";
+        } else if ((character === "\n" || character === "\r") && !quoted) {
+          if (character === "\r" && text[i + 1] === "\n") i++;
+          row.push(field);
+          if (row.some((value) => value.trim() !== "")) rows.push(row);
+          row = [];
+          field = "";
+        } else {
+          field += character;
+        }
+      }
+      if (quoted) throw new Error("CSV contains an unterminated quoted field.");
+      row.push(field);
+      if (row.some((value) => value.trim() !== "")) rows.push(row);
+      return rows;
+    }
+
+    function parseBars(text) {
+      const rows = parseCsv(text);
+      if (rows.length < 2) throw new Error("CSV needs a header and at least one data row.");
+      const headers = rows[0].map((value) => value.trim().replace(/^\uFEFF/, ""));
+      const indexes = new Map();
+      headers.forEach((header, index) => {
+        const key = header.toLowerCase();
+        if (indexes.has(key)) throw new Error(`Duplicate column: ${header}`);
+        indexes.set(key, index);
+      });
+      for (const column of requiredColumns) {
+        if (!indexes.has(column.toLowerCase())) throw new Error(`Missing required column: ${column}`);
+      }
+      const get = (row, column) => row[indexes.get(column.toLowerCase())]?.trim() ?? "";
+      const parsed = rows.slice(1).map((row, rowIndex) => {
+        if (row.length !== headers.length) throw new Error(`Row ${rowIndex + 2} has the wrong number of fields.`);
+        const symbol = get(row, "Symbol");
+        const timestampText = get(row, "Timestamp");
+        if (!symbol) throw new Error(`Row ${rowIndex + 2} has an empty Symbol.`);
+        if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(timestampText) || !Number.isFinite(Date.parse(timestampText))) {
+          throw new Error(`Row ${rowIndex + 2} Timestamp must be ISO 8601 with a timezone offset.`);
+        }
+        const numbers = {};
+        for (const column of ["Open", "High", "Low", "Close"]) {
+          numbers[column] = Number(get(row, column));
+          if (!Number.isFinite(numbers[column]) || numbers[column] <= 0) {
+            throw new Error(`Row ${rowIndex + 2} has an invalid ${column} price.`);
+          }
+        }
+        const volumeText = get(row, "Volume");
+        if (!/^\d+$/.test(volumeText)) throw new Error(`Row ${rowIndex + 2} has an invalid Volume.`);
+        const volume = Number(volumeText);
+        if (!Number.isSafeInteger(volume)) throw new Error(`Row ${rowIndex + 2} Volume is too large.`);
+        if (numbers.High < Math.max(numbers.Open, numbers.Close, numbers.Low)
+            || numbers.Low > Math.min(numbers.Open, numbers.Close, numbers.High)) {
+          throw new Error(`Row ${rowIndex + 2} High/Low do not contain Open and Close.`);
+        }
+        return { Symbol: symbol, Timestamp: timestampText, Epoch: Date.parse(timestampText), ...numbers, Volume: volume };
+      });
+      parsed.sort((a, b) => a.Epoch - b.Epoch || a.Symbol.localeCompare(b.Symbol));
+      const seen = new Set();
+      for (const bar of parsed) {
+        const key = `${bar.Symbol.toUpperCase()}|${bar.Epoch}`;
+        if (seen.has(key)) throw new Error(`Duplicate bar for ${bar.Symbol} at ${bar.Timestamp}.`);
+        seen.add(key);
+      }
+      return parsed;
+    }
+
+    function drawChart() {
+      const symbol = symbolSelect.value;
+      const selected = bars.filter((bar) => bar.Symbol === symbol);
+      if (selected.length === 0) return;
       const canvas = document.getElementById("price-chart");
       const bounds = canvas.getBoundingClientRect();
       const ratio = window.devicePixelRatio || 1;
@@ -135,16 +225,17 @@ dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synt
       canvas.height = Math.max(1, Math.floor(bounds.height * ratio));
       const context = canvas.getContext("2d");
       context.scale(ratio, ratio);
-
       const width = bounds.width;
       const height = bounds.height;
-      const padding = { top: 14, right: 18, bottom: 28, left: 68 };
-      const values = bars.map((bar) => bar.Close);
+      const padding = { top: 14, right: 18, bottom: 28, left: 76 };
+      const stride = Math.max(1, Math.ceil(selected.length / 1500));
+      const points = selected.filter((_, index) => index % stride === 0 || index === selected.length - 1);
+      const values = points.map((bar) => bar.Close);
       const min = Math.min(...values);
       const max = Math.max(...values);
       const spread = max - min || 1;
       const x = (index) => padding.left
-        + index * (width - padding.left - padding.right) / Math.max(1, bars.length - 1);
+        + index * (width - padding.left - padding.right) / Math.max(1, points.length - 1);
       const y = (value) => padding.top
         + (max - value) * (height - padding.top - padding.bottom) / spread;
 
@@ -163,62 +254,73 @@ dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synt
         context.textAlign = "right";
         context.fillText(value.toFixed(2), padding.left - 8, lineY);
       }
-
       context.strokeStyle = "#62d6a5";
       context.lineWidth = 2;
       context.beginPath();
-      values.forEach((value, index) => {
-        if (index === 0) context.moveTo(x(index), y(value));
-        else context.lineTo(x(index), y(value));
+      points.forEach((bar, index) => {
+        if (index === 0) context.moveTo(x(index), y(bar.Close));
+        else context.lineTo(x(index), y(bar.Close));
       });
       context.stroke();
       context.fillStyle = "#c5d0d8";
       context.textAlign = "left";
       context.textBaseline = "alphabetic";
-      context.fillText(new Date(bars[0].Timestamp).toLocaleString(), padding.left, height - 5);
+      context.fillText(points[0].Timestamp, padding.left, height - 5);
       context.textAlign = "right";
-      context.fillText(new Date(bars.at(-1).Timestamp).toLocaleString(), width - padding.right, height - 5);
+      context.fillText(points.at(-1).Timestamp, width - padding.right, height - 5);
+      document.getElementById("chart-title").textContent = `${symbol} close price preview`;
+      document.getElementById("chart-range").textContent =
+        `${selected.length.toLocaleString()} locally loaded bars · CSV rows are not sent to a server.`;
     }
 
-    async function loadSample() {
-      try {
-        const [csvResponse, reportResponse] = await Promise.all([
-          fetch("./data/sample_mes_5m_synthetic.csv"),
-          fetch("./data/sample-replay-report.json")
-        ]);
-        if (!csvResponse.ok || !reportResponse.ok) {
-          throw new Error("The published sample data files could not be loaded.");
-        }
+    function renderPreview() {
+      const symbols = [...new Set(bars.map((bar) => bar.Symbol))];
+      symbolSelect.replaceChildren(...symbols.map((symbol) => {
+        const option = document.createElement("option");
+        option.value = symbol;
+        option.textContent = symbol;
+        return option;
+      }));
+      symbolSelect.disabled = symbols.length < 2;
+      document.getElementById("bar-count").textContent = bars.length.toLocaleString();
+      document.getElementById("symbol-count").textContent = symbols.join(", ");
+      document.getElementById("first-time").textContent = bars[0].Timestamp;
+      document.getElementById("last-time").textContent = bars.at(-1).Timestamp;
 
-        const [csv, report] = await Promise.all([csvResponse.text(), reportResponse.json()]);
-        const rows = csv.trim().split(/\r?\n/);
-        const headers = rows.shift().split(",");
-        const bars = rows.map((line) => {
-          const fields = line.split(",");
-          const bar = Object.fromEntries(headers.map((header, index) => [header, fields[index]]));
-          return { ...bar, Close: Number(bar.Close) };
-        });
-        if (bars.length !== report.BarsProcessed || bars.length === 0) {
-          throw new Error("Sample bar count does not match the published replay report.");
+      const body = document.getElementById("preview-rows");
+      body.replaceChildren(...bars.slice(0, 10).map((bar) => {
+        const row = document.createElement("tr");
+        for (const value of [bar.Symbol, bar.Timestamp, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume]) {
+          const cell = document.createElement("td");
+          cell.textContent = String(value);
+          row.append(cell);
         }
+        return row;
+      }));
+      results.hidden = false;
+      drawChart();
+    }
 
-        document.getElementById("bar-count").textContent = report.BarsProcessed.toLocaleString();
-        document.getElementById("order-count").textContent = report.OrdersPlaced.toLocaleString();
-        document.getElementById("trade-count").textContent = report.TradesClosed.toLocaleString();
-        document.getElementById("net-pnl").textContent = currency.format(report.NetProfitLoss);
-        document.getElementById("ending-equity").textContent = currency.format(report.EndingEquity);
-        document.getElementById("chart-range").textContent =
-          `${bars.length} fabricated five-minute bars · ${bars[0].Timestamp} through ${bars.at(-1).Timestamp}`;
-        results.hidden = false;
-        status.hidden = true;
-        drawChart(bars);
-        window.addEventListener("resize", () => drawChart(bars));
-      } catch (error) {
-        status.textContent = `Sample data unavailable: ${error.message}`;
+    fileInput.addEventListener("change", async () => {
+      results.hidden = true;
+      bars = [];
+      if (!fileInput.files?.length) {
+        status.textContent = "No file selected. Choose a CSV to inspect it locally.";
+        return;
       }
-    }
-
-    loadSample();
+      try {
+        const text = await fileInput.files[0].text();
+        bars = parseBars(text);
+        renderPreview();
+        status.textContent = `${fileInput.files[0].name} parsed locally. No upload or network request was made.`;
+      } catch (error) {
+        status.textContent = `Could not read this CSV: ${error.message}`;
+      }
+    });
+    symbolSelect.addEventListener("change", drawChart);
+    window.addEventListener("resize", () => {
+      if (!results.hidden) drawChart();
+    });
   </script>
 </body>
 </html>

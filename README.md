@@ -23,11 +23,11 @@ The repository includes contract metadata, configurable risk checks, feature gat
 
 Each paper entry is tracked as an independent position and must be closed by its position ID. Short entries remain locked by default. The simulator tracks mark-to-market unrealized P/L, closed-trade realized P/L, and entry/exit fees; it does not persist state between runs. Regime classification and signals are not yet connected to live market data. T4 market data and live order routing are not connected or enabled.
 
-## Public sample-data demo
+## Use your own market data
 
-The [project website](https://bibek061.github.io/bot-for-trading-/) loads a fabricated 102-bar MES-like CSV and its JSON replay report from `docs/data/`. The chart and metrics are generated from that synthetic dataset only; they are not current quotes, historical exchange data, or evidence of strategy performance. There is no market-data provider account/API configured yet. Select and license a provider before adding real data; keep credentials in local environment variables or server-side secret storage and never in Git or browser code.
+The [project website](https://bibek061.github.io/bot-for-trading-/) lets you select a CSV from your device to preview its bars in your browser. The selected file is not uploaded or sent to a server. The page does not contain market prices, replay results, or a provider API. There is no data-provider account/API configured for this project yet.
 
-Download the [synthetic CSV](./docs/data/sample_mes_5m_synthetic.csv) and [generated JSON report](./docs/data/sample-replay-report.json).
+Use a market-data provider whose terms authorize your intended use; keep any provider credentials local or server-side, never in Git or browser code. The fabricated CSV under `tests/AutopilotQuant.Tests/Fixtures/` exists only to make automated tests repeatable and is not used by the site.
 
 ## Next milestones
 1. Validate regime thresholds and EMA20 pullback/reclaim rules on real historical/replay data
@@ -51,16 +51,12 @@ From PowerShell:
 
 Historical paper replay expects CSV columns `Symbol,Timestamp,Open,High,Low,Close,Volume`, with timestamps as ISO 8601 values including an explicit timezone offset:
 
-    dotnet run --project src\AutopilotQuant.Runner -- replay C:\data\MES_5m.csv --report-json data\replay-report.json
+    dotnet run --project src\AutopilotQuant.Runner -- replay C:\path\to\licensed-bars.csv --report-json C:\path\to\replay-report.json
 
-Try the included deterministic synthetic fixture:
-
-    dotnet run --project src\AutopilotQuant.Runner -- replay data\sample_mes_5m_synthetic.csv --report-json data\sample-replay-report.json
-
-The sample is fabricated to exercise one entry/exit path; it is not real market data and must not be used to assess strategy performance. Replay orders are simulated only. Open positions are closed at each replay trading-day boundary in `America/New_York` (configurable) and at the end of the input, using the last available bar close and configured paper slippage/fees. The replay sorts bars chronologically and rejects duplicate symbol/timestamp pairs.
+The replay runs locally against the selected file. Replay orders are simulated only. Open positions are closed at each replay trading-day boundary in `America/New_York` (configurable) and at the end of the input, using the last available bar close and configured paper slippage/fees. The replay sorts bars chronologically and rejects duplicate symbol/timestamp pairs.
 
 The JSON report contains run-level counts and performance metrics plus each closed trade's entry/exit prices, fees, gross P/L, and net P/L. Win rate uses net trade P/L. Profit factor uses net winning and losing trade P/L and is `null` when there are no losing trades because the ratio is undefined.
 
 ## Release and research disclaimer
 
-This is an experimental paper-trading/research prototype, not financial advice, a brokerage service, or a recommendation to trade. Strategies, thresholds, and synthetic replay outputs have not established profitability. The sample CSV is fabricated, not exchange data. Live T4 quotes and order routing are not implemented. Paper replay simplifies execution and does not model queue position, partial fills, market impact, or all fees and outages. Historical results, if later tested, do not guarantee future performance.
+This is an experimental paper-trading/research prototype, not financial advice, a brokerage service, or a recommendation to trade. Strategies and thresholds have not established profitability. The test fixture is fabricated, not exchange data. Live T4 quotes and order routing are not implemented. Paper replay simplifies execution and does not model queue position, partial fills, market impact, or all fees and outages. Historical results do not guarantee future performance.
