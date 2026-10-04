@@ -4,12 +4,12 @@ The local dashboard supports a **continuous T4 simulator feed**, authenticated h
 API backfill, exact expiring MES/MNQ bindings, external adapter ingress, and a TradingView
 Lightweight Charts interface. Live broker order routing remains disabled.
 
-The implementation is covered by scripted protocol/HTTP tests. **No authorized T4 account
-or data key is available in this project yet**, so real provider behavior, entitlements,
+The implementation is covered by scripted protocol/HTTP tests. **T4 API credentials have
+not been verified with this project yet**, so real provider behavior, entitlements,
 load handling and timing still need simulator verification. No synthetic prices appear in
 the dashboard and no subscription is purchased or activated by this software.
 
-## Connect with your provider API key
+## Connect with your provider credentials
 
 For Public.com equity reference quotes, use the separate **Public.com market context**
 panel and [Public.com setup guide](PUBLIC_API.md). Public.com does not supply MES/MNQ
@@ -17,7 +17,8 @@ through its documented quote API; the steps below configure the bot's futures fe
 
 1. Obtain T4 simulator/API access and authorized MES/MNQ market data. See the
    [official GitHub source and simulator registration guide](T4_SETUP.md).
-2. Put the API key on the server using `MarketData__T4__ApiKey` or the ignored local file below.
+2. Configure an API key or a simulator login with a CTS application license on the server,
+   using environment variables or the ignored local file below.
    Restart the dashboard after changing a credential.
 3. In **Market data**, select **T4 simulator**, enable the instruments, and enter their exact
    exchange, product and expiring market IDs. IDs come from T4; do not invent or split them.
@@ -44,22 +45,40 @@ before changing expiry. Automatic rollover and instrument discovery are not impl
 
 ## Server-only credentials
 
-Create `config/appsettings.Local.json`, which is already ignored by Git:
+Edit `config/appsettings.Local.json`, which is already ignored by Git. Preserve existing
+Public.com credentials and other settings. The T4 section supports both login methods:
 
 ```json
 {
   "MarketData": {
-    "T4": { "ApiKey": "" },
+    "T4": {
+      "ApiKey": "",
+      "Firm": "",
+      "Username": "",
+      "Password": "",
+      "AppName": "",
+      "AppLicense": ""
+    },
     "AdapterKey": ""
   }
 }
 ```
 
-Fill the relevant value locally. Do not paste keys into chat, the browser form, JavaScript,
-Git, or logs. The file is plaintext; restrict it to your OS user. Environment and command-line
-settings take precedence. The API exposes only credential-presence flags.
+Fill either `ApiKey` alone or all five other T4 fields locally. The application name/license
+must be authorized by CTS; use the values CTS provides, not a WebTrader cookie or a demo
+placeholder. An API key takes precedence when both methods are configured. Failed API-key
+authentication never falls back to the password. Password whitespace is preserved.
 
-- `MarketData__T4__ApiKey`: T4 simulator API-key authentication. Password/SSO login is not implemented.
+Do not paste credentials into chat, the browser form, JavaScript,
+Git, or logs. The file is plaintext; restrict it to your OS user. Environment and command-line
+settings take precedence. The dashboard API exposes only the method, configuration
+readiness and missing field names. These do not establish successful authentication.
+
+- `MarketData__T4__ApiKey`: T4 simulator API-key authentication.
+- `MarketData__T4__Firm`, `MarketData__T4__Username`, `MarketData__T4__Password`,
+  `MarketData__T4__AppName`, `MarketData__T4__AppLicense`: alternate licensed simulator login.
+  All five are required if the API key is empty. SSO and interactive two-factor challenges
+  are not implemented; a rejected login stops without switching authentication methods.
 - `MarketData__AdapterKey`: optional independent key for external feed ingress; 32–256 characters,
   different from the operator key.
 
@@ -71,7 +90,7 @@ fail startup instead of silently choosing another provider.
 ## Continuous connection behavior
 
 The WebSocket endpoint is fixed to `wss://wss-sim.t4login.com/v2`; historical requests go only
-to `https://api-sim.t4login.com/chart/barchart` with redirects disabled. Keys and short-lived
+to `https://api-sim.t4login.com/chart/barchart` with redirects disabled. Credentials and short-lived
 REST bearer tokens remain on the server. There are no account or order-routing message types
 in the client protocol.
 

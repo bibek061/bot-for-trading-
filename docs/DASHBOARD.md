@@ -36,6 +36,8 @@ separate deployment/security review. GitHub Pages only hosts the public CSV prev
 | `Dashboard__AccessKey` | Optional operator key instead of the generated file; 32–256 characters |
 | `MarketData__AdapterKey` | Separate 32–256 character key for configured external adapter ingress |
 | `MarketData__T4__ApiKey` | Server-side T4 simulator API key for streaming and diagnostics |
+| `MarketData__T4__Firm`, `MarketData__T4__Username`, `MarketData__T4__Password` | Simulator login; requires application name/license below when no API key is set |
+| `MarketData__T4__AppName`, `MarketData__T4__AppLicense` | CTS-authorized application values for the alternate login method |
 
 Never commit credentials, state, or market data. `data/` is ignored. Custom state directories
 should be outside version control and accessible only to your OS user. For continuous

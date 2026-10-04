@@ -74,7 +74,7 @@ public sealed class MarketDataConfigurationTests : IDisposable
     public async Task Settings_Persist_Without_Credentials_Or_Test_Success()
     {
         const string secret = "TEST-ONLY-DO-NOT-RETURN-THIS-SECRET";
-        var data = new MarketDataConfiguration(_directory, _session, new(), "adapter-test", secret);
+        var data = new MarketDataConfiguration(_directory, _session, new(), "adapter-test", new(secret));
         await data.SaveAsync(External);
         var persisted = File.ReadAllText(Path.Combine(_directory, "market-data.json"));
         Assert.DoesNotContain(secret, persisted);
@@ -84,6 +84,41 @@ public sealed class MarketDataConfigurationTests : IDisposable
         Assert.False(restored.Configured);
         Assert.Null(restored.LastTest);
         Assert.Equal("MES-expiring-test", restored.Settings.Instruments[0].MarketId);
+    }
+
+    [Fact]
+    public async Task Licensed_Login_Reports_Only_Readiness_And_Never_Persists_Credentials()
+    {
+        var values = new[] { "PRIVATE-FIRM", "PRIVATE-USERNAME", "PRIVATE-PASSWORD", "PRIVATE-APPLICATION", "PRIVATE-LICENSE" };
+        var credentials = new AutopilotQuant.T4.T4Credentials(firm: values[0], username: values[1], password: values[2],
+            appName: values[3], appLicense: values[4]);
+        var data = new MarketDataConfiguration(_directory, _session, new(), null, credentials);
+        var view = await data.SaveAsync(new("t4-simulator", [new("MES", ExchangeId: "EX", ProductId: "PRODUCT", MarketId: "EXPIRY"), new("MNQ", false)]));
+        Assert.True(view.Configured);
+        Assert.False(view.T4ApiKeyPresent);
+        Assert.Equal("username-password", view.Authentication!.Method);
+        Assert.True(view.Authentication.Configured);
+        Assert.Empty(view.Authentication.MissingFields);
+        Assert.Null(view.LastTest);
+        Assert.True((await _session.ViewAsync()).Paused);
+        var outputs = new[] { JsonSerializer.Serialize(view), JsonSerializer.Serialize(credentials), credentials.ToString(),
+            File.ReadAllText(Path.Combine(_directory, "market-data.json")) };
+        foreach (var output in outputs)
+            foreach (var value in values) Assert.DoesNotContain(value, output);
+    }
+
+    [Fact]
+    public async Task Simulator_Web_Login_Without_Application_License_Remains_Incomplete()
+    {
+        var data = new MarketDataConfiguration(_directory, _session, new(), null,
+            new(firm: "f", username: "u", password: "p", appName: "a"));
+        var view = await data.SaveAsync(new("t4-simulator", [new("MES", ExchangeId: "EX", ProductId: "PRODUCT", MarketId: "EXPIRY"), new("MNQ", false)]));
+        Assert.False(view.Configured);
+        Assert.Equal("username-password", view.Authentication!.Method);
+        Assert.Equal(["AppLicense"], view.Authentication.MissingFields);
+        Assert.Contains("AppLicense", Assert.Single(view.Missing));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => data.TestAsync(default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => data.ConnectAsync());
     }
 
     [Fact]

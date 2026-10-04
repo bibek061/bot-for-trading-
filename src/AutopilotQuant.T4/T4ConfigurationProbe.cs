@@ -24,10 +24,10 @@ public sealed class T4ConfigurationProbe(Func<IT4ProbeTransport>? transportFacto
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Func<IT4ProbeTransport> _transportFactory = transportFactory ?? (() => new T4ProbeTransport());
 
-    public async Task<T4ProbeResult> CheckAsync(string apiKey, IReadOnlyList<T4Market> markets,
+    public async Task<T4ProbeResult> CheckAsync(T4Credentials credentials, IReadOnlyList<T4Market> markets,
         int quoteMaxAgeSeconds, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(apiKey)) throw new ArgumentException("A server-side T4 API key is required.");
+        var loginRequest = credentials.CreateLoginRequest();
         if (markets.Count is < 1 or > 2 || markets.Any(m => m.Symbol is not ("MES" or "MNQ")
             || string.IsNullOrWhiteSpace(m.ExchangeId) || string.IsNullOrWhiteSpace(m.ProductId) || string.IsNullOrWhiteSpace(m.MarketId))
             || markets.Select(m => m.MarketId).Distinct(StringComparer.Ordinal).Count() != markets.Count)
@@ -47,7 +47,7 @@ public sealed class T4ConfigurationProbe(Func<IT4ProbeTransport>? transportFacto
         try
         {
             await transport.ConnectAsync(ct);
-            await transport.SendAsync(new ClientMessage { LoginRequest = new() { ApiKey = apiKey, PriceFormat = 1 } }.ToByteArray(), ct);
+            await transport.SendAsync(new ClientMessage { LoginRequest = loginRequest }.ToByteArray(), ct);
             // The count also bounds a peer that sends irrelevant messages faster than the timeout.
             for (var count = 0; count < 4096; count++)
             {
@@ -55,7 +55,7 @@ public sealed class T4ConfigurationProbe(Func<IT4ProbeTransport>? transportFacto
                 if (message.LoginResponse is { } login)
                 {
                     if (login.Result != 0 || string.IsNullOrWhiteSpace(login.SessionId) || authenticated)
-                        return Result("failed", $"T4 login was not accepted (result {login.Result}). Check simulator access and API-key permissions.");
+                        return Result("failed", $"T4 login was not accepted (result {login.Result}). Check simulator credentials, application access and any required account action with CTS.");
                     authenticated = true;
                     foreach (var market in markets)
                     {

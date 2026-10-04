@@ -96,7 +96,7 @@
               <article class="card">
                 <div class="card-heading"><h2>Setup readiness</h2><span id="data-readiness" class="tag">INCOMPLETE</span></div>
                 <div class="rule-row"><span>Saved provider</span><strong id="data-source-name">—</strong></div>
-                <div class="rule-row"><span>T4 API key on server</span><strong id="t4-key-status">—</strong></div>
+                <div class="rule-row"><span>T4 authentication on server</span><strong id="t4-key-status">—</strong></div>
                 <div class="rule-row"><span>External adapter key on server</span><strong id="adapter-key-status">—</strong></div>
                 <ul id="data-missing" class="setup-list"></ul>
                 <p class="micro">Save settings, then connect the feed. Backfill loads up to 512 completed bars per symbol when a historical timezone is selected. Resume paper entries separately after checking fresh quotes and indicator readiness.</p>
@@ -111,9 +111,10 @@
           </div>
           <article class="card credential-guide">
             <div class="card-heading"><h2>Keep credentials on the server</h2><span class="tag">LOCAL CONFIGURATION</span></div>
-            <p class="muted">Need T4 access? <a href="https://cts.sim.t4login.com/register/Default_cts.aspx" target="_blank" rel="noopener noreferrer">Register for the CTS simulator ↗</a> and confirm API-key access plus MES/MNQ data permissions with CTS or your T4 firm. Downloading the API source does not create credentials.</p>
+            <p class="muted">Need T4 access? <a href="https://cts.sim.t4login.com/register/Default_cts.aspx" target="_blank" rel="noopener noreferrer">Register for the CTS simulator ↗</a> and confirm API access plus MES/MNQ data permissions with CTS or your T4 firm. Already signed into WebTrader? That browser session is separate from this dashboard's API connection.</p>
             <p class="micro"><a href="https://github.com/CTS-Futures/t4-api-tools" target="_blank" rel="noopener noreferrer">Official T4 API source on GitHub ↗</a> · <a href="https://docs.t4login.com/doku.php?id=developers:apiv2:connecting" target="_blank" rel="noopener noreferrer">T4 connection and authentication guide ↗</a></p>
-            <p class="muted">After you obtain T4 simulator access, set <code>MarketData__T4__ApiKey</code> in the server environment or <code>MarketData:T4:ApiKey</code> in the Git-ignored <code>config/appsettings.Local.json</code>, then restart the dashboard. The page displays only whether a key is present.</p>
+            <p class="muted">In the Git-ignored <code>config/appsettings.Local.json</code>, configure <code>MarketData:T4</code> with either <code>ApiKey</code> or all five login fields: <code>Firm</code>, <code>Username</code>, <code>Password</code>, <code>AppName</code> and <code>AppLicense</code>. CTS must authorize the application name and license; a website login alone is insufficient. Preserve existing Public.com settings and restart after changes. Environment variables such as <code>MarketData__T4__Username</code> are also supported. An API key takes precedence when set.</p>
+            <p class="micro">The page shows only the authentication method and missing field names. Credentials stay on the server. A complete setup still needs a successful diagnostic to verify access.</p>
             <p class="micro">Simulator endpoint: <code>wss://wss-sim.t4login.com/v2</code>. For an external adapter, set a separate <code>MarketData__AdapterKey</code> (32–256 characters). Configuration examples and feed formats are in <code>docs/MARKET_DATA.md</code>.</p>
           </article>
         </section>

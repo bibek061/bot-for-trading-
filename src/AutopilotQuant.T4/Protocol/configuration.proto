@@ -28,7 +28,15 @@ message ServerMessage {
 message Heartbeat { int64 timestamp = 1; }
 message TokenRequest { string request_id = 1; }
 message AuthenticationToken { string request_id = 1; optional string token = 2; google.protobuf.Timestamp expire_time = 3; }
-message LoginRequest { string api_key = 1; int32 price_format = 10; }
+message LoginRequest {
+  string api_key = 1;
+  string firm = 2;
+  string username = 3;
+  string password = 4;
+  string app_name = 5;
+  string app_license = 6;
+  int32 price_format = 10;
+}
 message LoginResponse {
   int32 result = 1;
   string session_id = 2;

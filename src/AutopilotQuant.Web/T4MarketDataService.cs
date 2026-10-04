@@ -26,8 +26,9 @@ public sealed class T4MarketDataService(PaperSession session, T4StreamingClient 
     }
     public bool Active => View().Active;
 
-    public async Task ConnectAsync(string apiKey, T4Market[] markets, string historyTimeZone, int maxAge)
+    public async Task ConnectAsync(T4Credentials credentials, T4Market[] markets, string historyTimeZone, int maxAge)
     {
+        if (!credentials.Configured) throw new InvalidOperationException("Complete server-side T4 credentials before connecting.");
         await _control.WaitAsync();
         try
         {
@@ -39,7 +40,7 @@ public sealed class T4MarketDataService(PaperSession session, T4StreamingClient 
             _cancellation?.Dispose(); _cancellation = new();
             _maxQuoteAge = maxAge;
             lock (_stateLock) _view = new(true, "connecting", "Connecting to T4 simulator…", 1, null, 0, 0, 0, []);
-            _run = RunAsync(apiKey, markets, historyTimeZone, maxAge, _cancellation.Token);
+            _run = RunAsync(credentials, markets, historyTimeZone, maxAge, _cancellation.Token);
         }
         finally { _control.Release(); }
     }
@@ -56,7 +57,7 @@ public sealed class T4MarketDataService(PaperSession session, T4StreamingClient 
         }
         finally { _control.Release(); }
     }
-    private async Task RunAsync(string apiKey, T4Market[] markets, string timeZone, int maxAge, CancellationToken ct)
+    private async Task RunAsync(T4Credentials credentials, T4Market[] markets, string timeZone, int maxAge, CancellationToken ct)
     {
         try
         {
@@ -64,7 +65,7 @@ public sealed class T4MarketDataService(PaperSession session, T4StreamingClient 
             {
                 ct.ThrowIfCancellationRequested();
                 lock (_stateLock) _view = _view with { Attempt = attempt };
-                try { await client.RunAsync(apiKey, markets, timeZone, maxAge, this, ct); }
+                try { await client.RunAsync(credentials, markets, timeZone, maxAge, this, ct); }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {

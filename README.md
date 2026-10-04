@@ -25,7 +25,8 @@ the local server. [Public.com setup](docs/PUBLIC_API.md) is separate from future
 ```
 
 Open `http://127.0.0.1:5080`, then unlock with the key in `data/dashboard/dashboard.key`.
-The service starts paused. Configure an authorized T4 simulator API key and contract IDs,
+The service starts paused. Configure authorized T4 simulator credentials (API key or login
+with a CTS application license) and contract IDs,
 or use an external adapter, then check fresh quotes before enabling paper entries.
 GitHub Pages cannot host this backend.
 See [dashboard setup, integration, recovery, and limitations](docs/DASHBOARD.md).

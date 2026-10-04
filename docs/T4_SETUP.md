@@ -28,10 +28,14 @@ runtime dependency and is not bundled into the website or committed to our repos
    firm. Request an API key usable with API v2 at `wss://wss-sim.t4login.com/v2`. The
    [official authentication guide](https://docs.t4login.com/doku.php?id=developers:apiv2:connecting)
    describes API-key login and a separate username/password/application-license flow.
-   This dashboard implements API-key login only; a trial login alone is not a configured key.
+   This dashboard supports both methods; a browser session alone is not an API login.
 3. Save your issued key in the existing ignored `config/appsettings.Local.json` under
    `MarketData → T4 → ApiKey`, preserving `MarketData → Public` and other existing settings.
    Alternatively set `MarketData__T4__ApiKey` in the server environment. Restart the dashboard.
+   If CTS instead supplies a licensed login, leave `ApiKey` empty and set `Firm`, `Username`,
+   `Password`, `AppName` and `AppLicense` under `MarketData → T4`. All five are required;
+   a configured API key takes precedence. The [server configuration example](MARKET_DATA.md#server-only-credentials)
+   lists both methods. Credentials are never entered in the dashboard form.
 4. In **Market data → Futures data source & contracts**, select T4 simulator and enter the
    exact exchange, product and expiring market IDs for MES/MNQ supplied by T4. Do not use
    TradingView continuous symbols or invent IDs from contract names.
@@ -40,7 +44,7 @@ runtime dependency and is not bundled into the website or committed to our repos
    until explicitly resumed after fresh quotes and indicator history are available.
 
 See [market-data setup and behavior](MARKET_DATA.md) for details. Simulator access and
-authenticated quotes still need to be verified with an issued T4 key. The working
+authenticated quotes still need to be verified with authorized T4 API credentials. The working
 Public.com reference connection has its own credentials and supplies ETF context only.
 
 ## Signed into WebTrader but the dashboard is still incomplete
@@ -71,6 +75,10 @@ adding your simulator firm and username, without including your password:
 > enabling paid services. If API-key access is unavailable, please advise the
 > application-name/application-license requirements for username/password login.
 
-This is a request template only; the project does not send it. The current connector
-accepts API keys. A CTS-issued application license would require adding the documented
-alternate authentication flow; a WebTrader session cookie is not used for API login.
+This is a request template only; the project does not send it. The connector accepts
+API keys or a simulator login with a CTS-issued application name/license. Both methods
+use the same diagnostic, streaming and historical token flow. A WebTrader session cookie
+is not used for API login.
+
+The alternate login follows the official [.NET V2 credential provider](https://github.com/CTS-Futures/t4-api-tools/blob/505ecaf81267f4fdc230ef680169d3f05ea3f990/tools/dotNet/T4APIDemoV2/T4APIDemoV2/T4/CredentialProviders/ConfigurationCredentialProvider.cs)
+and [V2 authentication field definitions](https://github.com/CTS-Futures/t4-api-tools/blob/505ecaf81267f4fdc230ef680169d3f05ea3f990/proto/t4/v2/auth/auth.proto).

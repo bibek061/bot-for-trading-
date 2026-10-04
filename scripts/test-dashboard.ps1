@@ -14,7 +14,7 @@ $adapterHeaders = @{ 'X-Adapter-Key' = 'smoke-adapter-only-0123456789-abcdef' }
 $dll = Join-Path $repository "src/AutopilotQuant.Web/bin/$Configuration/net10.0/AutopilotQuant.Web.dll"
 if (!(Test-Path -LiteralPath $dll)) { throw 'Build the web project before running this smoke test.' }
 
-function Start-TestServer([bool]$WithAdapter) {
+function Start-TestServer([bool]$WithAdapter, [string]$T4Login = 'none') {
     $info = [Diagnostics.ProcessStartInfo]::new('dotnet')
     $info.ArgumentList.Add($dll)
     $info.WorkingDirectory = Join-Path $repository 'src/AutopilotQuant.Web'
@@ -27,6 +27,15 @@ function Start-TestServer([bool]$WithAdapter) {
     $info.Environment['Dashboard__AccessKey'] = $dashboardHeaders['X-Dashboard-Key']
     $info.Environment['MarketData__AdapterKey'] = $(if ($WithAdapter) { $adapterHeaders['X-Adapter-Key'] } else { '' })
     $info.Environment['MarketData__T4__ApiKey'] = ''
+    foreach ($field in @('Firm', 'Username', 'Password', 'AppName', 'AppLicense')) {
+        $info.Environment["MarketData__T4__$field"] = ''
+    }
+    if ($T4Login -ne 'none') {
+        foreach ($field in @('Firm', 'Username', 'Password', 'AppName', 'AppLicense')) {
+            $info.Environment["MarketData__T4__$field"] = "SMOKE-PRIVATE-$field"
+        }
+        if ($T4Login -eq 'partial') { $info.Environment['MarketData__T4__AppLicense'] = '' }
+    }
     $info.Environment['MarketData__Public__Secret'] = ''
     $info.Environment['MarketData__Public__AccountId'] = ''
     $info.Environment['Logging__LogLevel__Default'] = 'Warning'
@@ -107,6 +116,22 @@ try {
     $server = Start-TestServer $true
     $persisted = Invoke-RestMethod "$url/api/market-data" -Headers $dashboardHeaders
     Check ($persisted.settings.provider -eq 't4-simulator' -and $persisted.settings.instruments[0].marketId -eq 'SYNTHETIC-API-TEST' -and $null -eq $persisted.lastTest) 'Market-data bindings survive restart without persisting verified connection claims'
+    $server.Kill($true); $server.WaitForExit(); $server.Dispose(); $server = $null
+    $server = Start-TestServer $false 'partial'
+    $partial = Invoke-RestMethod "$url/api/market-data" -Headers $dashboardHeaders
+    Check (!$partial.configured -and !$partial.authentication.configured -and $partial.authentication.method -eq 'username-password' -and $partial.authentication.missingFields -contains 'AppLicense') 'Simulator login identifies the missing application license without exposing values'
+    Check ((Invoke-WebRequest "$url/api/market-data/connect" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'Partial licensed login cannot open a T4 connection'
+    $server.Kill($true); $server.WaitForExit(); $server.Dispose(); $server = $null
+    $server = Start-TestServer $false 'complete'
+    $marketConfiguration.instruments[0].exchangeId = 'TEST-EXCHANGE'
+    $marketConfiguration.instruments[0].productId = 'TEST-PRODUCT'
+    $licensed = Invoke-RestMethod "$url/api/market-data" -Method Put -ContentType 'application/json' -Body ($marketConfiguration | ConvertTo-Json -Depth 5) -Headers $dashboardHeaders
+    Check ($licensed.configured -and $licensed.authentication.configured -and $licensed.authentication.method -eq 'username-password' -and !$licensed.t4ApiKeyPresent) 'Complete server environment credentials enable the licensed login option without an API key'
+    Check (!$licensed.connection.active -and $null -eq $licensed.lastTest) 'Configured credentials do not claim an authenticated connection or start the feed'
+    $licensedState = Invoke-WebRequest "$url/api/state" -Headers $dashboardHeaders
+    Check ($licensedState.Content -notmatch 'SMOKE-PRIVATE-' -and ($licensedState.Content | ConvertFrom-Json).session.paused) 'Account state exposes no credential values and remains paused'
+    Check ((Get-Content -LiteralPath (Join-Path $testDirectory 'market-data.json') -Raw) -notmatch 'SMOKE-PRIVATE-') 'Saved market settings contain no simulator credentials'
+    Check ((Invoke-WebRequest "$url/api/market-data" -Method Put -ContentType 'application/json' -Body '{"provider":"t4-simulator","instruments":[],"password":"DO-NOT-SAVE"}' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Browser-supplied simulator passwords are rejected'
     Write-Host 'Dashboard HTTP smoke tests passed.'
 } finally {
     if ($null -ne $server) { if (!$server.HasExited) { $server.Kill($true); $server.WaitForExit() }; $server.Dispose() }

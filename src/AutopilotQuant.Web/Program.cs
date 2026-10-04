@@ -51,9 +51,13 @@ builder.Services.AddSingleton(new PublicMarketDataClient(
 builder.Services.AddSingleton<T4StreamingClient>();
 builder.Services.AddSingleton<T4MarketDataService>();
 builder.Services.AddHostedService(services => services.GetRequiredService<T4MarketDataService>());
+var t4Credentials = new T4Credentials(builder.Configuration["MarketData:T4:ApiKey"],
+    builder.Configuration["MarketData:T4:Firm"], builder.Configuration["MarketData:T4:Username"],
+    builder.Configuration["MarketData:T4:Password"], builder.Configuration["MarketData:T4:AppName"],
+    builder.Configuration["MarketData:T4:AppLicense"]);
 builder.Services.AddSingleton(services => new MarketDataConfiguration(directory,
     services.GetRequiredService<PaperSession>(), services.GetRequiredService<T4ConfigurationProbe>(),
-    adapterKey, builder.Configuration["MarketData:T4:ApiKey"], services.GetRequiredService<T4MarketDataService>()));
+    adapterKey, t4Credentials, services.GetRequiredService<T4MarketDataService>()));
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OffsetTimestampConverter()));
 builder.Services.AddSingleton(new ReplayArchive(directory));
 builder.Services.AddHostedService<SessionMonitor>();

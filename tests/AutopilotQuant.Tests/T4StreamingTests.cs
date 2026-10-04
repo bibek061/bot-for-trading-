@@ -120,8 +120,9 @@ public sealed class T4StreamingTests
     }
 
     [Theory]
-    [InlineData("unconfirmed")] [InlineData("CST")]
-    public async Task Continuous_Client_Subscribes_Loads_Optional_History_And_Disposes_On_Disconnect(string timezone)
+    [InlineData("unconfirmed", false)] [InlineData("CST", false)]
+    [InlineData("unconfirmed", true)] [InlineData("CST", true)]
+    public async Task Continuous_Client_Subscribes_Loads_Optional_History_And_Disposes_On_Disconnect(string timezone, bool passwordLogin)
     {
         using var cancellation = new CancellationTokenSource();
         var sink = new Sink(cancellation);
@@ -133,12 +134,36 @@ public sealed class T4StreamingTests
         ]);
         var handler = new HistoryHandler();
         var client = new T4StreamingClient(new(new HttpClient(handler)), () => transport, new Clock());
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.RunAsync("TEST-API-KEY",[Market],timezone,15,sink,cancellation.Token));
+        var credentials = passwordLogin ? new T4Credentials(firm: "test-firm", username: "test-user",
+            password: " test-password ", appName: "test-app", appLicense: "test-license") : new("TEST-API-KEY");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.RunAsync(credentials,[Market],timezone,15,sink,cancellation.Token));
+        var login = transport.Sent[0].LoginRequest;
+        Assert.Equal(passwordLogin ? "" : "TEST-API-KEY", login.ApiKey);
+        Assert.Equal(passwordLogin ? " test-password " : "", login.Password);
+        Assert.Equal(passwordLogin ? "test-firm" : "", login.Firm);
+        Assert.Equal(passwordLogin ? "test-user" : "", login.Username);
+        Assert.Equal(passwordLogin ? "test-app" : "", login.AppName);
+        Assert.Equal(passwordLogin ? "test-license" : "", login.AppLicense);
+        Assert.Equal(1, login.PriceFormat);
         Assert.Single(sink.Quotes); Assert.True(transport.Disposed);
         Assert.Contains(transport.Sent,m => m.MarketSubscribe?.Ticker == true);
         Assert.Equal(timezone == "CST" ? 1 : 0,handler.Calls);
         Assert.Equal(timezone == "CST" ? 1 : 0,sink.Bars.Count);
         Assert.All(sink.Bars,b => Assert.True(b.Warmup));
+    }
+
+    [Fact]
+    public async Task Incomplete_Password_Credentials_Cannot_Start_A_Stream()
+    {
+        var created = false;
+        using var cancellation = new CancellationTokenSource();
+        var client = new T4StreamingClient(new(new HttpClient(new HistoryHandler())), () => {
+            created = true; return new ScriptedTransport([]);
+        }, new Clock());
+        var error = await Assert.ThrowsAsync<T4FeedException>(() => client.RunAsync(new(firm: "f", username: "u", password: "p"),
+            [Market], "CST", 15, new Sink(cancellation), cancellation.Token));
+        Assert.False(error.Retryable);
+        Assert.False(created);
     }
 
     [Fact]
@@ -150,7 +175,7 @@ public sealed class T4StreamingTests
         var handler = new RefreshHandler();
         var sink = new RefreshSink(clock,cancellation);
         var client = new T4StreamingClient(new(new HttpClient(handler)),() => transport,clock);
-        var run = client.RunAsync("TEST-API-KEY",[Market],"CST",15,sink,cancellation.Token);
+        var run = client.RunAsync(new("TEST-API-KEY"),[Market],"CST",15,sink,cancellation.Token);
         try
         {
             await handler.RefreshStarted.Task.WaitAsync(cancellation.Token);

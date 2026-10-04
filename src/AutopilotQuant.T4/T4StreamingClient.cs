@@ -24,11 +24,11 @@ public sealed class T4StreamingClient(T4HistoryClient history, Func<IT4ProbeTran
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Func<IT4ProbeTransport> _transportFactory = transportFactory ?? (() => new T4ProbeTransport());
 
-    public async Task RunAsync(string apiKey, IReadOnlyList<T4Market> markets, string historyTimeZone,
+    public async Task RunAsync(T4Credentials credentials, IReadOnlyList<T4Market> markets, string historyTimeZone,
         int maxAge, IT4FeedSink sink, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(apiKey) || markets.Count is < 1 or > 2)
-            throw new T4FeedException("T4 API key and selected contracts are required.", false);
+        if (!credentials.Configured || markets.Count is < 1 or > 2)
+            throw new T4FeedException("Complete T4 server credentials and selected contracts are required.", false);
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var ct = lifetime.Token;
         using var transport = _transportFactory();
@@ -43,7 +43,7 @@ public sealed class T4StreamingClient(T4HistoryClient history, Func<IT4ProbeTran
         using var loginDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         loginDeadline.CancelAfter(TimeSpan.FromSeconds(15));
         await transport.ConnectAsync(loginDeadline.Token);
-        await transport.SendAsync(new ClientMessage { LoginRequest = new() { ApiKey = apiKey, PriceFormat = 1 } }.ToByteArray(), loginDeadline.Token);
+        await transport.SendAsync(new ClientMessage { LoginRequest = credentials.CreateLoginRequest() }.ToByteArray(), loginDeadline.Token);
         LoginResponse? login = null;
         for (var count = 0; count < 32 && login is null; count++)
         {
@@ -51,7 +51,7 @@ public sealed class T4StreamingClient(T4HistoryClient history, Func<IT4ProbeTran
             login = frame.LoginResponse;
         }
         if (login is null || login.Result != 0 || string.IsNullOrWhiteSpace(login.SessionId))
-            throw new T4FeedException("T4 simulator login was rejected. Check the server API key and account access.", false);
+            throw new T4FeedException("T4 simulator login was rejected. Check server credentials, application access and any required account action with CTS.", false);
         if (markets.Any(m => !login.Exchanges.Any(e => e.ExchangeId == m.ExchangeId && e.MarketDataType is 1 or 2 or 4)))
             throw new T4FeedException("Current market-data permission is missing for a selected exchange.", false);
         var channel = Channel.CreateBounded<ServerMessage>(new BoundedChannelOptions(128) {

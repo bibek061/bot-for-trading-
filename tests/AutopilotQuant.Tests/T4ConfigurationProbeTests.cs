@@ -28,7 +28,7 @@ public sealed class T4ConfigurationProbeTests
     public async Task Probe_Verifies_Contracts_And_Quotes_Then_Disposes_Without_Order_Messages()
     {
         var transport = new Transport(Login(), Details(), Depth());
-        var result = await new T4ConfigurationProbe(() => transport, new Clock()).CheckAsync("x", Markets, 15);
+        var result = await new T4ConfigurationProbe(() => transport, new Clock()).CheckAsync(new("x"), Markets, 15);
         Assert.Equal("verified", result.Outcome);
         Assert.True(result.Authenticated);
         Assert.True(Assert.Single(result.Markets).DefinitionVerified);
@@ -44,12 +44,54 @@ public sealed class T4ConfigurationProbeTests
         Assert.False(subscribe.Ticker);
     }
 
+    [Fact]
+    public async Task Password_Login_Uses_Official_Field_Numbers_And_Subscribes_Without_Orders()
+    {
+        var transport = new Transport(Login(), Details(), Depth());
+        var credentials = new T4Credentials(firm: "f", username: "u", password: "p", appName: "a", appLicense: "l");
+        var result = await new T4ConfigurationProbe(() => transport, new Clock()).CheckAsync(credentials, Markets, 15);
+        Assert.Equal("verified", result.Outcome);
+        // Independently assert envelope 2; firm/user/password/app/license fields 2–6; REAL field 10.
+        Assert.Equal(Convert.FromHexString("12111201661A01752201702A016132016C5001"), transport.Sent[0]);
+        Assert.Equal(2, transport.Sent.Count);
+        Assert.NotNull(ClientMessage.Parser.ParseFrom(transport.Sent[1]).MarketSubscribe);
+        Assert.True(transport.Disposed);
+    }
+
+    [Theory]
+    [InlineData("Firm")] [InlineData("Username")] [InlineData("Password")]
+    [InlineData("AppName")] [InlineData("AppLicense")]
+    public async Task Partial_Login_Is_Blocked_Before_A_Transport_Is_Created(string missing)
+    {
+        var credentials = new T4Credentials(firm: missing == "Firm" ? " " : "f",
+            username: missing == "Username" ? "" : "u", password: missing == "Password" ? null : "p",
+            appName: missing == "AppName" ? "" : "a", appLicense: missing == "AppLicense" ? "" : "l");
+        Assert.False(credentials.Configured);
+        Assert.Equal([missing], credentials.MissingFields);
+        var created = false;
+        var probe = new T4ConfigurationProbe(() => { created = true; return new Transport(); });
+        await Assert.ThrowsAsync<ArgumentException>(() => probe.CheckAsync(credentials, Markets, 15));
+        Assert.False(created);
+    }
+
+    [Fact]
+    public async Task ApiKey_Takes_Precedence_And_Rejected_Login_Does_Not_Fall_Back_To_Password()
+    {
+        var credentials = new T4Credentials("x", "f", "u", "p", "a", "l");
+        var transport = new Transport(new ServerMessage { LoginResponse = new() { Result = 9 } });
+        var result = await new T4ConfigurationProbe(() => transport).CheckAsync(credentials, Markets, 15);
+        Assert.Equal("api-key", credentials.Method);
+        Assert.Empty(credentials.MissingFields);
+        Assert.Equal("failed", result.Outcome);
+        Assert.Equal(Convert.FromHexString("12050A01785001"), Assert.Single(transport.Sent));
+    }
+
     [Theory]
     [InlineData(0)] [InlineData(8)] [InlineData(10)] [InlineData(999)]
     public async Task Missing_Delayed_Or_Unknown_Entitlement_Prevents_Subscription(int entitlement)
     {
         var transport = new Transport(Login(entitlement));
-        var result = await new T4ConfigurationProbe(() => transport, new Clock()).CheckAsync("test", Markets, 15);
+        var result = await new T4ConfigurationProbe(() => transport, new Clock()).CheckAsync(new("test"), Markets, 15);
         Assert.Equal("incomplete", result.Outcome);
         Assert.Single(transport.Sent);
         Assert.False(result.Markets[0].FreshQuoteObserved);
@@ -69,7 +111,7 @@ public sealed class T4ConfigurationProbeTests
             case "disabled": details.MarketDetails.Disabled = true; break;
             case "spread": details.MarketDetails.StrategyType = 1; break;
         }
-        var result = await new T4ConfigurationProbe(() => new Transport(Login(), details, Depth()), new Clock()).CheckAsync("test", Markets, 15);
+        var result = await new T4ConfigurationProbe(() => new Transport(Login(), details, Depth()), new Clock()).CheckAsync(new("test"), Markets, 15);
         Assert.Equal("incomplete", result.Outcome);
         Assert.False(result.Markets[0].DefinitionVerified);
     }
@@ -91,7 +133,7 @@ public sealed class T4ConfigurationProbeTests
             case "tick": depth.MarketDepth.Offers[0].Price.Value = "5000.1"; break;
             case "recovery": depth.MarketDepth.Flags = 2048; break;
         }
-        var result = await new T4ConfigurationProbe(() => new Transport(Login(), Details(), depth), new Clock()).CheckAsync("test", Markets, 15);
+        var result = await new T4ConfigurationProbe(() => new Transport(Login(), Details(), depth), new Clock()).CheckAsync(new("test"), Markets, 15);
         Assert.NotEqual("verified", result.Outcome);
         Assert.False(result.Markets[0].FreshQuoteObserved);
     }
@@ -101,10 +143,10 @@ public sealed class T4ConfigurationProbeTests
     {
         var snapshot = new ServerMessage { MarketSnapshot = new() { MarketId = "expiry-test", Mode = 2, Delayed = true,
             Messages = { new MarketSnapshot.Types.SnapshotItem { MarketDepth = Depth().MarketDepth } } } };
-        var result = await new T4ConfigurationProbe(() => new Transport(Login(), Details(), snapshot), new Clock()).CheckAsync("SECRET", Markets, 15);
+        var result = await new T4ConfigurationProbe(() => new Transport(Login(), Details(), snapshot), new Clock()).CheckAsync(new("SECRET"), Markets, 15);
         Assert.False(result.Markets[0].FreshQuoteObserved);
         var failed = new ServerMessage { LoginResponse = new() { Result = 9 } };
-        result = await new T4ConfigurationProbe(() => new Transport(failed), new Clock()).CheckAsync("SECRET", Markets, 15);
+        result = await new T4ConfigurationProbe(() => new Transport(failed), new Clock()).CheckAsync(new("SECRET"), Markets, 15);
         Assert.False(result.Authenticated);
         Assert.Equal("failed", result.Outcome);
         Assert.DoesNotContain("SECRET", result.Summary);
@@ -115,10 +157,10 @@ public sealed class T4ConfigurationProbeTests
     {
         var transport = new Transport();
         var probe = new T4ConfigurationProbe(() => transport, new Clock());
-        await Assert.ThrowsAsync<ArgumentException>(() => probe.CheckAsync("", Markets, 15));
+        await Assert.ThrowsAsync<ArgumentException>(() => probe.CheckAsync(new(""), Markets, 15));
         Assert.Empty(transport.Sent);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => probe.CheckAsync("test", Markets, 15, cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => probe.CheckAsync(new("test"), Markets, 15, cancellation.Token));
         Assert.True(transport.Disposed);
     }
 

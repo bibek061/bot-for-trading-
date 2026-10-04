@@ -12,10 +12,11 @@ public sealed record MarketDataSettings(string Provider, MarketBinding[] Instrum
 {
     public static MarketDataSettings Empty => new("none", [new("MES"), new("MNQ")]);
 }
+public sealed record T4AuthenticationStatus(string Method, bool Configured, string[] MissingFields);
 public sealed record MarketDataStatus(MarketDataSettings Settings, bool Configured, string Name, string Status,
     string Detail, string[] Missing, bool AdapterKeyPresent, bool T4ApiKeyPresent, bool Testing,
     T4ProbeResult? LastTest, string SimulatorEndpoint, bool ContinuousT4StreamingSupported = true, bool LiveRoutingEnabled = false,
-    T4StreamView? Connection = null);
+    T4StreamView? Connection = null, T4AuthenticationStatus? Authentication = null);
 
 public sealed class MarketDataConfiguration
 {
@@ -23,7 +24,7 @@ public sealed class MarketDataConfiguration
     private readonly string _path;
     private readonly PaperSession _session;
     private readonly T4ConfigurationProbe _probe;
-    private readonly string? _t4ApiKey;
+    private readonly T4Credentials _credentials;
     private readonly bool _adapterKeyPresent;
     private readonly T4MarketDataService? _stream;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -31,11 +32,11 @@ public sealed class MarketDataConfiguration
     private T4ProbeResult? _lastTest;
     private volatile bool _testing;
 
-    public MarketDataConfiguration(string directory, PaperSession session, T4ConfigurationProbe probe, string? adapterKey, string? t4ApiKey,
+    public MarketDataConfiguration(string directory, PaperSession session, T4ConfigurationProbe probe, string? adapterKey, T4Credentials? credentials,
         T4MarketDataService? stream = null)
     {
         _path = Path.Combine(directory, "market-data.json");
-        _session = session; _probe = probe; _t4ApiKey = t4ApiKey;
+        _session = session; _probe = probe; _credentials = credentials ?? new();
         _stream = stream;
         _adapterKeyPresent = !string.IsNullOrWhiteSpace(adapterKey);
         if (File.Exists(_path) && new FileInfo(_path).Length > 64 * 1024)
@@ -56,12 +57,13 @@ public sealed class MarketDataConfiguration
             ? "Only enabled, exact contract IDs are accepted. Provider connectivity and licensed data must be supplied by your external adapter."
             : settings.Provider == "t4-simulator"
                 ? missing.Length > 0
-                    ? "T4 simulator needs its own API key and exact futures contract IDs. Open Market data for missing items and CTS registration links. Public.com ETF quotes are a separate reference connection."
+                    ? "T4 simulator needs server credentials and exact futures contract IDs. Use an API key or a simulator login with a CTS application license. Open Market data for missing items. Public.com ETF quotes are a separate reference connection."
                     : "Connect your authorized MES/MNQ feed for continuous quotes and candles. Choose the historical timestamp timezone to load completed bars before streaming."
                 : "Choose your market-data source and select the expiring contracts. Prices are never generated.";
         return new(settings with { Instruments = settings.Instruments.ToArray() }, settings.Provider != "none" && missing.Length == 0,
-            name, status, detail, missing, _adapterKeyPresent, !string.IsNullOrWhiteSpace(_t4ApiKey), _testing,
-            Volatile.Read(ref _lastTest), T4ConfigurationProbe.SimulatorEndpoint, Connection: _stream?.View());
+            name, status, detail, missing, _adapterKeyPresent, _credentials.ApiKeyPresent, _testing,
+            Volatile.Read(ref _lastTest), T4ConfigurationProbe.SimulatorEndpoint, Connection: _stream?.View(),
+            Authentication: new(_credentials.Method, _credentials.Configured, _credentials.MissingFields));
     }
 
     public async Task<MarketDataStatus> SaveAsync(MarketDataSettings input)
@@ -95,13 +97,13 @@ public sealed class MarketDataConfiguration
             var settings = _settings;
             if (_stream?.Active == true) throw new InvalidOperationException("Disconnect before running the separate diagnostic test.");
             if (settings.Provider != "t4-simulator") throw new InvalidOperationException("Select and save T4 simulator before testing.");
-            if (Missing(settings).Length > 0) throw new InvalidOperationException("Complete the saved contract settings and server-side T4 API key before testing.");
+            if (Missing(settings).Length > 0) throw new InvalidOperationException("Complete the saved contract settings and server-side T4 credentials before testing.");
             var session = await _session.ViewAsync();
             if (!session.Paused || session.Positions.Count != 0 || session.Pending.Count != 0)
                 throw new InvalidOperationException("Pause and flatten before testing a provider connection.");
             _testing = true;
             Volatile.Write(ref _lastTest, null);
-            var result = await _probe.CheckAsync(_t4ApiKey!, settings.Instruments.Where(m => m.Enabled)
+            var result = await _probe.CheckAsync(_credentials, settings.Instruments.Where(m => m.Enabled)
                 .Select(m => new T4Market(m.Symbol, m.ExchangeId, m.ProductId, m.MarketId)).ToArray(), session.Settings.QuoteMaxAgeSeconds, cancellationToken);
             Volatile.Write(ref _lastTest, result);
         }
@@ -115,10 +117,10 @@ public sealed class MarketDataConfiguration
         try
         {
             if (_settings.Provider != "t4-simulator" || Missing(_settings).Length > 0)
-                throw new InvalidOperationException("Save complete T4 simulator IDs and configure the server API key before connecting.");
+                throw new InvalidOperationException("Save complete T4 simulator IDs and configure server credentials before connecting.");
             if (_stream is null) throw new InvalidOperationException("T4 streaming service is unavailable.");
             var session = await _session.ViewAsync();
-            await _stream.ConnectAsync(_t4ApiKey!, _settings.Instruments.Where(m => m.Enabled)
+            await _stream.ConnectAsync(_credentials, _settings.Instruments.Where(m => m.Enabled)
                 .Select(m => new T4Market(m.Symbol, m.ExchangeId, m.ProductId, m.MarketId)).ToArray(), _settings.HistoryTimeZone, session.Settings.QuoteMaxAgeSeconds);
             return View();
         }
@@ -161,7 +163,13 @@ public sealed class MarketDataConfiguration
         var missing = new List<string>();
         if (settings.Provider == "none") return ["Select a provider to prepare market data."];
         if (settings.Provider == "external" && !_adapterKeyPresent) missing.Add("Set MarketData__AdapterKey on the server and restart.");
-        if (settings.Provider == "t4-simulator" && string.IsNullOrWhiteSpace(_t4ApiKey)) missing.Add("Set MarketData__T4__ApiKey on the server and restart.");
+        if (settings.Provider == "t4-simulator" && !_credentials.Configured)
+        {
+            if (_credentials.Method == "not-configured")
+                missing.Add("Set MarketData__T4__ApiKey, or Firm, Username, Password, AppName and AppLicense under MarketData:T4 on the server, then restart.");
+            else
+                missing.AddRange(_credentials.MissingFields.Select(field => $"Set MarketData__T4__{field} on the server and restart (or use ApiKey authentication)."));
+        }
         if (!settings.Instruments.Any(m => m.Enabled)) missing.Add("Enable at least one instrument.");
         foreach (var market in settings.Instruments.Where(m => m.Enabled))
         {

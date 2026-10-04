@@ -160,7 +160,9 @@ function renderMarketData(provider) {
   text('data-stream-quotes', number(stream?.quotes || 0));
   text('data-stream-bars', number(stream?.completedBars || 0));
   text('data-stream-last', stream?.lastMessageAt ? `Last provider message: ${date(stream.lastMessageAt)} · connection attempt ${stream.attempt}` : 'No provider messages received.');
-  text('t4-key-status', provider.t4ApiKeyPresent ? 'Present · not proof of access' : 'Not set');
+  const authentication = provider.authentication;
+  text('t4-key-status', authentication?.method === 'api-key' ? 'API key configured'
+    : authentication?.method === 'username-password' ? (authentication.configured ? 'Login + license configured' : 'Login + license · incomplete') : 'Not set');
   text('adapter-key-status', provider.adapterKeyPresent ? 'Present' : 'Not set');
   text('data-readiness', provider.configured ? 'SETTINGS READY' : 'INCOMPLETE');
   listText('data-missing', provider.missing.length ? provider.missing : ['Required settings are present. Check the actual data source before paper testing.']);
@@ -193,7 +195,7 @@ function populateMarketData() {
 }
 function updateMarketDataFields() {
   const provider = $('data-provider').value;
-  text('data-provider-help', provider === 't4-simulator' ? 'Continuous simulator feed. Configure the server API key and exact T4 IDs, save, then connect. Feed connection never resumes paper entries automatically.' : provider === 'external' ? 'Your external adapter must supply authorized quotes and completed bars. The contract ID in each feed request must match the market ID below.' : 'Data ingress is disabled until a provider is selected and configured.');
+  text('data-provider-help', provider === 't4-simulator' ? 'Continuous simulator feed. Configure server credentials (API key or login with an application license) and exact T4 IDs, save, then connect. Feed connection never resumes paper entries automatically.' : provider === 'external' ? 'Your external adapter must supply authorized quotes and completed bars. The contract ID in each feed request must match the market ID below.' : 'Data ingress is disabled until a provider is selected and configured.');
   $('history-timezone-label').hidden = provider !== 't4-simulator';
   $('market-bindings').hidden = provider === 'none';
   document.querySelectorAll('.t4-field').forEach(label => label.hidden = provider !== 't4-simulator');
