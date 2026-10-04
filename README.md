@@ -31,6 +31,8 @@ GitHub Pages cannot host this backend.
 See [dashboard setup, integration, recovery, and limitations](docs/DASHBOARD.md).
 See [market-data configuration and server credentials](docs/MARKET_DATA.md) to prepare T4
 simulator access or bind a separate external adapter to exact expiring contracts.
+The [T4 setup guide](docs/T4_SETUP.md) links the official GitHub API source and simulator
+registration. Source downloads do not include an account's API key or data permissions.
 
 ## Current scope
 - Windows + .NET 10
@@ -55,7 +57,7 @@ Each paper entry is tracked as an independent position and must be closed by its
 
 ## Use your own market data
 
-The [project website](https://bibek061.github.io/bot-for-trading-/) lets you select a CSV from your device to preview its bars in your browser. The selected file is not uploaded or sent to a server. The page does not contain market prices, replay results, or a provider API. There is no data-provider account/API configured for this project yet.
+The [project website](https://bibek061.github.io/bot-for-trading-/) lets you select a CSV from your device to preview its bars in your browser. The selected file is not uploaded or sent to a server. The public page does not contain market prices, replay results, or a provider API. Provider credentials belong only in the local dashboard's server configuration.
 
 Use a market-data provider whose terms authorize your intended use; keep any provider credentials local or server-side, never in Git or browser code. The fabricated CSV under `tests/AutopilotQuant.Tests/Fixtures/` exists only to make automated tests repeatable and is not used by the site.
 

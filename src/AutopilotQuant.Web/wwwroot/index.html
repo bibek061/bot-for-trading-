@@ -111,6 +111,8 @@
           </div>
           <article class="card credential-guide">
             <div class="card-heading"><h2>Keep credentials on the server</h2><span class="tag">LOCAL CONFIGURATION</span></div>
+            <p class="muted">Need T4 access? <a href="https://cts.sim.t4login.com/register/Default_cts.aspx" target="_blank" rel="noopener noreferrer">Register for the CTS simulator ↗</a> and confirm API-key access plus MES/MNQ data permissions with CTS or your T4 firm. Downloading the API source does not create credentials.</p>
+            <p class="micro"><a href="https://github.com/CTS-Futures/t4-api-tools" target="_blank" rel="noopener noreferrer">Official T4 API source on GitHub ↗</a> · <a href="https://docs.t4login.com/doku.php?id=developers:apiv2:connecting" target="_blank" rel="noopener noreferrer">T4 connection and authentication guide ↗</a></p>
             <p class="muted">After you obtain T4 simulator access, set <code>MarketData__T4__ApiKey</code> in the server environment or <code>MarketData:T4:ApiKey</code> in the Git-ignored <code>config/appsettings.Local.json</code>, then restart the dashboard. The page displays only whether a key is present.</p>
             <p class="micro">Simulator endpoint: <code>wss://wss-sim.t4login.com/v2</code>. For an external adapter, set a separate <code>MarketData__AdapterKey</code> (32–256 characters). Configuration examples and feed formats are in <code>docs/MARKET_DATA.md</code>.</p>
           </article>

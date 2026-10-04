@@ -49,13 +49,15 @@ public sealed class MarketDataConfiguration
         var settings = Volatile.Read(ref _settings);
         var missing = Missing(settings);
         var name = settings.Provider switch { "external" => "External data adapter", "t4-simulator" => "T4 simulator", _ => "No provider selected" };
-        var status = settings.Provider == "none" ? "Market data not configured" : missing.Length > 0 ? "Setup incomplete"
+        var status = settings.Provider == "none" || missing.Length > 0 ? "MES/MNQ futures feed not configured"
             : settings.Provider == "external" ? "External ingress ready — check instrument freshness"
             : _testing ? "Testing simulator configuration…" : _stream?.View().Message ?? "T4 settings saved — ready to connect";
         var detail = settings.Provider == "external"
             ? "Only enabled, exact contract IDs are accepted. Provider connectivity and licensed data must be supplied by your external adapter."
             : settings.Provider == "t4-simulator"
-                ? "Connect your authorized MES/MNQ feed for continuous quotes and candles. Choose the historical timestamp timezone to load completed bars before streaming."
+                ? missing.Length > 0
+                    ? "T4 simulator needs its own API key and exact futures contract IDs. Open Market data for missing items and CTS registration links. Public.com ETF quotes are a separate reference connection."
+                    : "Connect your authorized MES/MNQ feed for continuous quotes and candles. Choose the historical timestamp timezone to load completed bars before streaming."
                 : "Choose your market-data source and select the expiring contracts. Prices are never generated.";
         return new(settings with { Instruments = settings.Instruments.ToArray() }, settings.Provider != "none" && missing.Length == 0,
             name, status, detail, missing, _adapterKeyPresent, !string.IsNullOrWhiteSpace(_t4ApiKey), _testing,

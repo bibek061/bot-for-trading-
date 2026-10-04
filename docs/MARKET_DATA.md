@@ -15,7 +15,8 @@ For Public.com equity reference quotes, use the separate **Public.com market con
 panel and [Public.com setup guide](PUBLIC_API.md). Public.com does not supply MES/MNQ
 through its documented quote API; the steps below configure the bot's futures feed.
 
-1. Obtain T4 simulator/API access and authorized MES/MNQ market data.
+1. Obtain T4 simulator/API access and authorized MES/MNQ market data. See the
+   [official GitHub source and simulator registration guide](T4_SETUP.md).
 2. Put the API key on the server using `MarketData__T4__ApiKey` or the ignored local file below.
    Restart the dashboard after changing a credential.
 3. In **Market data**, select **T4 simulator**, enable the instruments, and enter their exact
