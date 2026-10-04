@@ -1,9 +1,9 @@
 # Local paper dashboard
 
 This is a single-user, local paper workspace. It never routes real orders. No T4 account,
-market-data subscription, or continuous T4 feed is bundled. The **Market data** page saves
-provider/contract settings and supports a bounded T4 simulator configuration check.
-See [market-data setup](MARKET_DATA.md) for credentials, diagnostics and remaining streaming work.
+market-data subscription or credentials are bundled. The **Market data** page configures
+continuous T4 simulator quotes, optional historical backfill and a separate diagnostic check.
+See [market-data setup](MARKET_DATA.md) for credentials, behavior and outstanding provider validation.
 
 ## Start
 
@@ -35,7 +35,7 @@ separate deployment/security review. GitHub Pages only hosts the public CSV prev
 | `Dashboard__DataDirectory` | Private state directory, default repository `data/dashboard` |
 | `Dashboard__AccessKey` | Optional operator key instead of the generated file; 32–256 characters |
 | `MarketData__AdapterKey` | Separate 32–256 character key for configured external adapter ingress |
-| `MarketData__T4__ApiKey` | Server-side T4 simulator API key for configuration checks |
+| `MarketData__T4__ApiKey` | Server-side T4 simulator API key for streaming and diagnostics |
 
 Never commit credentials, state, or market data. `data/` is ignored. Custom state directories
 should be outside version control and accessible only to your OS user. For continuous
@@ -52,7 +52,9 @@ operation, prefer a state directory outside OneDrive or other syncing software.
 - Planned stop-loss budget per trade, spread limit, position count, daily loss, peak
   drawdown, freshness checks, weekday entry schedule, and scheduled paper flatten.
 - Stops and targets evaluated on accepted quotes even when entries are paused.
-- A one-second monitor checks staleness/risk separately from three-second browser polling.
+- A one-second monitor checks staleness/risk independently of one-second browser polling.
+- TradingView Lightweight Charts with zoom/pan, crosshair, OHLC/volume readout, EMA overlays,
+  5m/15m/1h display intervals and fullscreen. The strategy remains on completed five-minute bars.
 - Atomic file snapshots are flushed before replacement/publication. Failed persistence
   blocks further mutations until restart. One writer per directory; corrupt state fails startup.
 - CSV uploads go to the local server, which saves reports but not raw CSVs. Limits are
@@ -119,13 +121,13 @@ expire after the quote timeout or are replaced by a newer bar.
 
 Start T4 work with the [V2 API](https://docs.t4login.com/doku.php?id=developers:apiv2) and
 [simulator/certification requirements](https://docs.t4login.com/doku.php?id=developers:apiv2:certification).
-T4 diagnostic login, entitlement/contract checks and bounded quote observation are implemented.
-Continuous streaming, discovery, reconnect/resubscribe, calendars, aggregation, backfill,
-and certification still require implementation and actual account access.
+T4 diagnostic login, continuous quotes/ticker, reconnect, bar aggregation and optional historical
+backfill are implemented. Actual-account verification, sustained-load validation, discovery,
+calendars and certification are still required. See MARKET_DATA.md for the remaining limitations.
 
 ## Limits and next release
 
-This snapshot store is for low-rate local paper research, not tick-throughput execution.
+This snapshot store is for local paper research. Ordered quote batches reduce disk writes, but sustained production tick throughput has not been validated.
 Skipped feed updates can miss simulated stops. The fill model assumes full quantity at
 the accepted quote plus slippage. Stops can gap through their trigger; targets use simulated
 market exits. No partial fills, order queues, market impact, margin model, broker working

@@ -63,7 +63,7 @@ async function refresh() {
     message(error.message);
   } finally { polling = false; }
 }
-setInterval(refresh, 3000);
+setInterval(refresh, 1000);
 document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () => {
   const name = button.dataset.panel;
   document.querySelectorAll('.panel-page').forEach(panel => panel.hidden = panel.id !== name);
@@ -120,27 +120,21 @@ $('download-report').onclick = () => {
   if (!currentReplay) return; const url = URL.createObjectURL(new Blob([JSON.stringify(currentReplay,null,2)],{type:'application/json'}));
   const link = document.createElement('a'); link.href = url; link.download = `paper-replay-${currentReplay.id}.json`; link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
 };
+let marketChart;
 function renderChart() {
   if (!state || $('overview').hidden) return;
   const instrument = state.instruments.find(i => i.symbol === selectedSymbol);
   text('contract-label',instrument.contractId || 'No contract connected');
   text('quote',instrument.quote ? `${number(instrument.quote.bid)} / ${number(instrument.quote.ask)}` : '—');
-  text('quote-state',instrument.quote ? instrument.fresh ? 'FRESH' : 'STALE' : 'NO DATA');
+  text('quote-state',instrument.quote ? instrument.fresh ? 'CURRENT API QUOTE' : 'STALE' : 'NO DATA');
   text('ema',`EMA20 ${instrument.fastEma === null ? '—' : number(instrument.fastEma)} / EMA50 ${instrument.slowEma === null ? '—' : number(instrument.slowEma)}`);
-  text('quote-time',`Last quote: ${time(instrument.quote?.timestamp)}`);
-  text('signal-reason',instrument.signalReason);
-  const bars = instrument.bars.slice(-65), canvas = $('chart'), ctx = canvas.getContext('2d');
-  const width = canvas.clientWidth, height = canvas.clientHeight, scale = window.devicePixelRatio || 1;
-  if (!width) return; canvas.width = width * scale; canvas.height = height * scale; ctx.scale(scale,scale); ctx.clearRect(0,0,width,height);
-  $('chart-empty').hidden = bars.length > 0; if (!bars.length) return;
-  const low = Math.min(...bars.map(b => b.low)), high = Math.max(...bars.map(b => b.high));
-  const pad = Math.max((high-low)*.12,1), min = low-pad, max = high+pad, plotWidth = width-58, plotHeight = height-25;
-  const y = price => 8 + (max-price)/(max-min)*(plotHeight-12);
-  ctx.font = '10px Segoe UI'; ctx.fillStyle = '#7288a4'; ctx.strokeStyle = '#223042'; ctx.lineWidth = 1;
-  for (let i=0;i<5;i++) { const value = min+(max-min)*i/4, py = y(value); ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(plotWidth,py);ctx.stroke();ctx.fillText(number(value),plotWidth+7,py+3); }
-  const step = plotWidth/bars.length;
-  bars.forEach((bar,i) => { const x = step*(i+.5), color = bar.close >= bar.open ? '#8be0c5' : '#da899a'; ctx.strokeStyle=color;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,y(bar.high));ctx.lineTo(x,y(bar.low));ctx.stroke();ctx.fillRect(x-Math.max(2,step*.56)/2,Math.min(y(bar.open),y(bar.close)),Math.max(2,step*.56),Math.max(1,Math.abs(y(bar.open)-y(bar.close)))); });
-  ctx.fillStyle='#7288a4';ctx.fillText(time(bars[0].timestamp),0,height-3);ctx.fillText(time(bars.at(-1).timestamp),Math.max(0,plotWidth-60),height-3);
+  text('quote-time',`Last quote: ${time(instrument.quote?.timestamp)}`); text('signal-reason',instrument.signalReason);
+  const bars = [...instrument.bars], forming = providerState?.connection?.formingBars?.find(bar => bar.symbol === selectedSymbol);
+  if (forming && (!bars.length || new Date(forming.timestamp) > new Date(bars.at(-1).timestamp))) bars.push(forming);
+  text('chart-source',`${providerState?.settings.provider === 't4-simulator' ? 'T4 SIMULATOR' : 'EXTERNAL ADAPTER'} · UTC · ${forming ? 'LAST CANDLE FORMING' : 'COMPLETED BARS'}`);
+  $('chart-empty').hidden = bars.length > 0;
+  try { marketChart ||= new MarketChart($('chart')); marketChart.update(bars,selectedSymbol); }
+  catch { text('chart-ohlc','Chart could not load. Refresh the page or inspect the local server assets.'); }
 }
 window.addEventListener('resize',renderChart);
 
@@ -153,6 +147,12 @@ function renderMarketData(provider) {
   text('provider-status', provider.status); text('provider-detail', provider.detail);
   text('provider-tag', provider.settings.provider === 'external' && provider.configured ? 'INGRESS READY' : 'SETUP');
   text('data-source-name', provider.name);
+  const stream = provider.connection;
+  text('data-stream-summary', stream?.message || 'Disconnected');
+  text('data-stream-messages', number(stream?.messages || 0));
+  text('data-stream-quotes', number(stream?.quotes || 0));
+  text('data-stream-bars', number(stream?.completedBars || 0));
+  text('data-stream-last', stream?.lastMessageAt ? `Last provider message: ${date(stream.lastMessageAt)} · connection attempt ${stream.attempt}` : 'No provider messages received.');
   text('t4-key-status', provider.t4ApiKeyPresent ? 'Present · not proof of access' : 'Not set');
   text('adapter-key-status', provider.adapterKeyPresent ? 'Present' : 'Not set');
   text('data-readiness', provider.configured ? 'SETTINGS READY' : 'INCOMPLETE');
@@ -165,6 +165,7 @@ function renderMarketData(provider) {
 }
 function populateMarketData() {
   $('data-provider').value = providerState.settings.provider;
+  $('history-timezone').value = providerState.settings.historyTimeZone || 'unconfirmed';
   $('market-bindings').replaceChildren();
   providerState.settings.instruments.forEach(market => {
     const group = document.createElement('fieldset'), legend = document.createElement('legend');
@@ -185,7 +186,8 @@ function populateMarketData() {
 }
 function updateMarketDataFields() {
   const provider = $('data-provider').value;
-  text('data-provider-help', provider === 't4-simulator' ? 'Simulator only. A server-side API key and exact T4 IDs are required for the diagnostic check.' : provider === 'external' ? 'Your external adapter must supply authorized quotes and completed bars. The contract ID in each feed request must match the market ID below.' : 'Data ingress is disabled until a provider is selected and configured.');
+  text('data-provider-help', provider === 't4-simulator' ? 'Continuous simulator feed. Configure the server API key and exact T4 IDs, save, then connect. Feed connection never resumes paper entries automatically.' : provider === 'external' ? 'Your external adapter must supply authorized quotes and completed bars. The contract ID in each feed request must match the market ID below.' : 'Data ingress is disabled until a provider is selected and configured.');
+  $('history-timezone-label').hidden = provider !== 't4-simulator';
   $('market-bindings').hidden = provider === 'none';
   document.querySelectorAll('.t4-field').forEach(label => label.hidden = provider !== 't4-simulator');
   document.querySelectorAll('[data-market]').forEach(group => {
@@ -195,16 +197,19 @@ function updateMarketDataFields() {
   updateMarketDataButtons();
 }
 function updateMarketDataButtons() {
-  $('market-data-form').querySelectorAll('fieldset, select').forEach(input => input.disabled = marketDataBusy || providerState?.testing);
-  $('save-market-data').disabled = marketDataBusy || providerState?.testing || !marketDataDirty || !state?.paused || state.positions.length > 0 || state.pending.length > 0;
-  $('test-market-data').disabled = marketDataBusy || providerState?.testing || marketDataDirty || !providerState?.configured || providerState.settings.provider !== 't4-simulator' || !state?.paused || state.positions.length > 0;
+  const active = providerState?.connection?.active;
+  $('market-data-form').querySelectorAll('fieldset, select').forEach(input => input.disabled = marketDataBusy || providerState?.testing || active);
+  $('save-market-data').disabled = marketDataBusy || active || providerState?.testing || !marketDataDirty || !state?.paused || state.positions.length > 0 || state.pending.length > 0;
+  $('test-market-data').disabled = marketDataBusy || active || providerState?.testing || marketDataDirty || !providerState?.configured || providerState.settings.provider !== 't4-simulator' || !state?.paused || state.positions.length > 0;
+  $('connect-market-data').disabled = marketDataBusy || active || providerState?.testing || marketDataDirty || !providerState?.configured || providerState.settings.provider !== 't4-simulator' || !state?.paused;
+  $('disconnect-market-data').disabled = marketDataBusy || !active;
 }
 $('market-data-form').oninput = () => {
   marketDataDirty = true; text('data-form-status','Unsaved changes. Save before testing; the current connection settings have not changed.'); updateMarketDataFields();
 };
 $('market-data-form').onsubmit = async event => {
   event.preventDefault();
-  const settings = {provider:$('data-provider').value, instruments:[...document.querySelectorAll('[data-market]')].map(group => ({
+  const settings = {provider:$('data-provider').value, historyTimeZone:$('history-timezone').value, instruments:[...document.querySelectorAll('[data-market]')].map(group => ({
     symbol:group.dataset.market, enabled:group.querySelector('[name=enabled]').checked,
     ...Object.fromEntries(['exchangeId','productId','marketId'].map(name => [name,group.querySelector(`[name=${name}]`).value.trim()]))
   }))};
@@ -220,4 +225,10 @@ $('test-market-data').onclick = async () => {
   try { renderMarketData(await api('market-data/test',{method:'POST'})); }
   catch (error) { message(error.message); }
   finally { marketDataBusy = false; updateMarketDataButtons(); await refresh(); }
+};
+for (const action of ['connect','disconnect']) $(action+'-market-data').onclick = async () => {
+  marketDataBusy = true; updateMarketDataButtons();
+  try { renderMarketData(await api('market-data/'+action,{method:'POST'})); await refresh(); }
+  catch (error) { message(error.message); }
+  finally { marketDataBusy = false; updateMarketDataButtons(); }
 };

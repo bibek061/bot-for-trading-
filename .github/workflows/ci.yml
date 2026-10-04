@@ -18,6 +18,14 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Chart calculations and JavaScript syntax
+        run: |
+          node --check src/AutopilotQuant.Web/wwwroot/app.js
+          node --check src/AutopilotQuant.Web/wwwroot/market-chart.js
+          node scripts/test-chart.cjs
       - name: Dashboard HTTP smoke tests
         shell: pwsh
         run: ./scripts/test-dashboard.ps1 -Configuration Release

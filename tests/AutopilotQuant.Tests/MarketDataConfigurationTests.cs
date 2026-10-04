@@ -63,7 +63,7 @@ public sealed class MarketDataConfigurationTests : IDisposable
         var saved = await _data.SaveAsync(MarketDataSettings.Empty with { Provider = "t4-simulator" });
         Assert.False(saved.Configured);
         Assert.Contains(saved.Missing, item => item.Contains("ApiKey"));
-        Assert.False(saved.ContinuousT4StreamingSupported);
+        Assert.True(saved.ContinuousT4StreamingSupported);
         Assert.False(saved.LiveRoutingEnabled);
         await Assert.ThrowsAsync<InvalidOperationException>(() => _data.TestAsync(default));
         await _data.SaveAsync(MarketDataSettings.Empty with { Provider = "external" });

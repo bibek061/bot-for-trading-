@@ -100,7 +100,7 @@ public sealed class T4ConfigurationProbe(Func<IT4ProbeTransport>? transportFacto
                 {
                     var complete = terminal.Count == 0;
                     return Result(complete ? "verified" : "incomplete", complete
-                        ? "Simulator login, selected contracts and current quotes verified. Diagnostic connection closed; continuous streaming is not implemented."
+                        ? "Simulator login, selected contracts and current quotes verified. Diagnostic closed; use Connect feed to start continuous streaming."
                         : "Simulator login succeeded, but one or more selected markets are not ready. Diagnostic connection closed.");
                 }
             }

@@ -44,9 +44,13 @@ if (!string.IsNullOrEmpty(adapterKey) && adapterKey == dashboardKey)
 builder.Services.AddSingleton(_ => new PaperSessionStore(directory));
 builder.Services.AddSingleton<PaperSession>();
 builder.Services.AddSingleton(new T4ConfigurationProbe());
+builder.Services.AddSingleton(new T4HistoryClient(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })));
+builder.Services.AddSingleton<T4StreamingClient>();
+builder.Services.AddSingleton<T4MarketDataService>();
+builder.Services.AddHostedService(services => services.GetRequiredService<T4MarketDataService>());
 builder.Services.AddSingleton(services => new MarketDataConfiguration(directory,
     services.GetRequiredService<PaperSession>(), services.GetRequiredService<T4ConfigurationProbe>(),
-    adapterKey, builder.Configuration["MarketData:T4:ApiKey"]));
+    adapterKey, builder.Configuration["MarketData:T4:ApiKey"], services.GetRequiredService<T4MarketDataService>()));
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new OffsetTimestampConverter()));
 builder.Services.AddSingleton(new ReplayArchive(directory));
 builder.Services.AddHostedService<SessionMonitor>();
@@ -123,6 +127,8 @@ app.MapGet("/api/state", async (PaperSession session, MarketDataConfiguration ma
 app.MapGet("/api/market-data", (MarketDataConfiguration marketData) => marketData.View());
 app.MapPut("/api/market-data", async (MarketDataSettings settings, MarketDataConfiguration marketData) => await marketData.SaveAsync(settings));
 app.MapPost("/api/market-data/test", async (MarketDataConfiguration marketData, CancellationToken ct) => await marketData.TestAsync(ct));
+app.MapPost("/api/market-data/connect", async (MarketDataConfiguration marketData) => await marketData.ConnectAsync());
+app.MapPost("/api/market-data/disconnect", async (MarketDataConfiguration marketData) => await marketData.DisconnectAsync());
 app.MapPost("/api/control/{action}", async (string action, PaperSession session) => await session.ControlAsync(action));
 app.MapPut("/api/settings", async (ForwardSettings settings, PaperSession session) => await session.ConfigureAsync(settings));
 app.MapPost("/api/feed/quotes", async (FeedQuote quote, MarketDataConfiguration marketData) => await marketData.AcceptQuoteAsync(quote));

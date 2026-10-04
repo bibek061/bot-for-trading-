@@ -7,16 +7,18 @@ Experimental futures research and paper-trading workspace for MES/MNQ, with a pl
 The .NET web app provides a local dashboard, saved paper sessions, risk controls,
 next-quote forward simulation, CSV replay reports, and authenticated ingress for a future
 market-data adapter. The Market data page adds saved provider/contract configuration and
-a bounded T4 simulator login/contract/quote check. Continuous T4 streaming is not implemented;
-no account or data subscription is bundled. Live order routing remains disabled.
+a T4 simulator stream with optional historical API backfill, reconnect handling and a
+TradingView Lightweight Charts interface. Actual T4 account/entitlement verification is
+still pending; no account or data subscription is bundled. Live order routing remains disabled.
 
 ```powershell
 ./scripts/start-dashboard.ps1
 ```
 
 Open `http://127.0.0.1:5080`, then unlock with the key in `data/dashboard/dashboard.key`.
-The service starts paused. An authorized, separately implemented adapter and fresh quotes
-are required before paper entries can be enabled. GitHub Pages cannot host this backend.
+The service starts paused. Configure an authorized T4 simulator API key and contract IDs,
+or use an external adapter, then check fresh quotes before enabling paper entries.
+GitHub Pages cannot host this backend.
 See [dashboard setup, integration, recovery, and limitations](docs/DASHBOARD.md).
 See [market-data configuration and server credentials](docs/MARKET_DATA.md) to prepare T4
 simulator access or bind a separate external adapter to exact expiring contracts.
@@ -40,7 +42,7 @@ T4 market data -> regime detection -> strategies -> learning/allocation -> risk 
 ## Current status
 The repository includes contract metadata, configurable risk checks, feature gate logic, a 5-minute-bar market regime classifier, a long-only EMA20 pullback/reclaim signal evaluator, and a paper-only coordinator that connects completed-bar signals to simulated orders. The coordinator processes each instrument's completed bars once, ignores out-of-order bars, marks existing positions to market, and enforces a configurable open-position limit. The initial regime baseline uses ATR(14) / close >= 1% for risk-off; otherwise, EMA(20) relative to EMA(50) and the latest EMA(20) slope classify uptrend, downtrend, or chop. The classifier returns insufficient-data until 50 bars are available. The signal evaluator emits a BUY candidate only when an uptrend's preceding completed bar closed at/below EMA20 and the current completed bar closes above EMA20. These thresholds and rules are initial paper-research assumptions and are not validated trading advice.
 
-Each paper entry is tracked as an independent position and must be closed by its position ID. Short entries remain locked by default. The simulator tracks mark-to-market unrealized P/L, closed-trade realized P/L, and entry/exit fees. CLI replay is isolated per run; the web forward session persists state and resumes paused after restart. An authenticated feed boundary can deliver quotes and completed bars to the forward engine, but an actual provider adapter is not bundled. T4 market data and live order routing are not connected or enabled.
+Each paper entry is tracked as an independent position and must be closed by its position ID. Short entries remain locked by default. The simulator tracks mark-to-market unrealized P/L, closed-trade realized P/L, and entry/exit fees. CLI replay is isolated per run; the web forward session persists state and resumes paused after restart. A server-side T4 simulator client can deliver authorized quotes and completed bars to the forward engine, alongside the authenticated external feed boundary. Configure and verify provider access before use. Live order routing remains disabled.
 
 ## Use your own market data
 
@@ -49,8 +51,8 @@ The [project website](https://bibek061.github.io/bot-for-trading-/) lets you sel
 Use a market-data provider whose terms authorize your intended use; keep any provider credentials local or server-side, never in Git or browser code. The fabricated CSV under `tests/AutopilotQuant.Tests/Fixtures/` exists only to make automated tests repeatable and is not used by the site.
 
 ## Next milestones
-1. Obtain authorized T4 simulator/data access, validate the configuration check, and implement continuous streaming
-2. Validate discovery, quote/bar normalization, reconnect, backfill, and exchange calendars
+1. Obtain authorized T4 simulator/data access and validate the implemented streaming/backfill path
+2. Verify normalization, reconnect and sustained throughput; add discovery and exchange calendars
 3. Validate EMA20 research and forward fills on licensed market data
 4. Upgrade local snapshots for sustained feeds and durable operational auditing
 5. Implement and test broker order lifecycle, protective orders, and reconciliation
@@ -77,4 +79,4 @@ The JSON report contains run-level counts and performance metrics plus each clos
 
 ## Release and research disclaimer
 
-This is an experimental paper-trading/research prototype, not financial advice, a brokerage service, or a recommendation to trade. Strategies and thresholds have not established profitability. The test fixture is fabricated, not exchange data. Live T4 quotes and order routing are not implemented. Paper replay simplifies execution and does not model queue position, partial fills, market impact, or all fees and outages. Historical results do not guarantee future performance.
+This is an experimental paper-trading/research prototype, not financial advice, a brokerage service, or a recommendation to trade. Strategies and thresholds have not established profitability. The test fixture is fabricated, not exchange data. The T4 simulator data client awaits actual-account validation; live order routing is not implemented. Paper replay simplifies execution and does not model queue position, partial fills, market impact, or all fees and outages. Historical results do not guarantee future performance.

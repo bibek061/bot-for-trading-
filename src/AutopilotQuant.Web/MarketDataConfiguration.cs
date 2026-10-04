@@ -8,13 +8,14 @@ namespace AutopilotQuant.Web;
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record MarketBinding(string Symbol, bool Enabled = true, string ExchangeId = "", string ProductId = "", string MarketId = "");
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record MarketDataSettings(string Provider, MarketBinding[] Instruments)
+public sealed record MarketDataSettings(string Provider, MarketBinding[] Instruments, string HistoryTimeZone = "unconfirmed")
 {
     public static MarketDataSettings Empty => new("none", [new("MES"), new("MNQ")]);
 }
 public sealed record MarketDataStatus(MarketDataSettings Settings, bool Configured, string Name, string Status,
     string Detail, string[] Missing, bool AdapterKeyPresent, bool T4ApiKeyPresent, bool Testing,
-    T4ProbeResult? LastTest, string SimulatorEndpoint, bool ContinuousT4StreamingSupported = false, bool LiveRoutingEnabled = false);
+    T4ProbeResult? LastTest, string SimulatorEndpoint, bool ContinuousT4StreamingSupported = true, bool LiveRoutingEnabled = false,
+    T4StreamView? Connection = null);
 
 public sealed class MarketDataConfiguration
 {
@@ -24,15 +25,18 @@ public sealed class MarketDataConfiguration
     private readonly T4ConfigurationProbe _probe;
     private readonly string? _t4ApiKey;
     private readonly bool _adapterKeyPresent;
+    private readonly T4MarketDataService? _stream;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private MarketDataSettings _settings;
     private T4ProbeResult? _lastTest;
     private volatile bool _testing;
 
-    public MarketDataConfiguration(string directory, PaperSession session, T4ConfigurationProbe probe, string? adapterKey, string? t4ApiKey)
+    public MarketDataConfiguration(string directory, PaperSession session, T4ConfigurationProbe probe, string? adapterKey, string? t4ApiKey,
+        T4MarketDataService? stream = null)
     {
         _path = Path.Combine(directory, "market-data.json");
         _session = session; _probe = probe; _t4ApiKey = t4ApiKey;
+        _stream = stream;
         _adapterKeyPresent = !string.IsNullOrWhiteSpace(adapterKey);
         if (File.Exists(_path) && new FileInfo(_path).Length > 64 * 1024)
             throw new InvalidDataException("Market-data settings exceed the size limit.");
@@ -47,15 +51,15 @@ public sealed class MarketDataConfiguration
         var name = settings.Provider switch { "external" => "External data adapter", "t4-simulator" => "T4 simulator", _ => "No provider selected" };
         var status = settings.Provider == "none" ? "Market data not configured" : missing.Length > 0 ? "Setup incomplete"
             : settings.Provider == "external" ? "External ingress ready — check instrument freshness"
-            : _testing ? "Testing simulator configuration…" : "T4 settings saved — continuous streaming unavailable";
+            : _testing ? "Testing simulator configuration…" : _stream?.View().Message ?? "T4 settings saved — ready to connect";
         var detail = settings.Provider == "external"
             ? "Only enabled, exact contract IDs are accepted. Provider connectivity and licensed data must be supplied by your external adapter."
             : settings.Provider == "t4-simulator"
-                ? "Test login, contracts and current quotes with a short diagnostic connection. Continuous T4 streaming and historical backfill are not implemented."
+                ? "Connect your authorized MES/MNQ feed for continuous quotes and candles. Choose the historical timestamp timezone to load completed bars before streaming."
                 : "Choose your market-data source and select the expiring contracts. Prices are never generated.";
         return new(settings with { Instruments = settings.Instruments.ToArray() }, settings.Provider != "none" && missing.Length == 0,
             name, status, detail, missing, _adapterKeyPresent, !string.IsNullOrWhiteSpace(_t4ApiKey), _testing,
-            Volatile.Read(ref _lastTest), T4ConfigurationProbe.SimulatorEndpoint);
+            Volatile.Read(ref _lastTest), T4ConfigurationProbe.SimulatorEndpoint, Connection: _stream?.View());
     }
 
     public async Task<MarketDataStatus> SaveAsync(MarketDataSettings input)
@@ -64,6 +68,7 @@ public sealed class MarketDataConfiguration
         await _gate.WaitAsync();
         try
         {
+            if (_stream?.Active == true) throw new InvalidOperationException("Disconnect the T4 feed before changing provider settings.");
             // Feed admission uses the same gate. The core checks pause/exposure and clears old data atomically.
             await _session.ResetMarketDataAsync();
             var temporary = _path + ".tmp";
@@ -86,6 +91,7 @@ public sealed class MarketDataConfiguration
         try
         {
             var settings = _settings;
+            if (_stream?.Active == true) throw new InvalidOperationException("Disconnect before running the separate diagnostic test.");
             if (settings.Provider != "t4-simulator") throw new InvalidOperationException("Select and save T4 simulator before testing.");
             if (Missing(settings).Length > 0) throw new InvalidOperationException("Complete the saved contract settings and server-side T4 API key before testing.");
             var session = await _session.ViewAsync();
@@ -99,6 +105,33 @@ public sealed class MarketDataConfiguration
         }
         finally { _testing = false; _gate.Release(); }
         return View();
+    }
+
+    public async Task<MarketDataStatus> ConnectAsync()
+    {
+        if (!await _gate.WaitAsync(0)) throw new InvalidOperationException("A market-data operation is already running.");
+        try
+        {
+            if (_settings.Provider != "t4-simulator" || Missing(_settings).Length > 0)
+                throw new InvalidOperationException("Save complete T4 simulator IDs and configure the server API key before connecting.");
+            if (_stream is null) throw new InvalidOperationException("T4 streaming service is unavailable.");
+            var session = await _session.ViewAsync();
+            await _stream.ConnectAsync(_t4ApiKey!, _settings.Instruments.Where(m => m.Enabled)
+                .Select(m => new T4Market(m.Symbol, m.ExchangeId, m.ProductId, m.MarketId)).ToArray(), _settings.HistoryTimeZone, session.Settings.QuoteMaxAgeSeconds);
+            return View();
+        }
+        finally { _gate.Release(); }
+    }
+    public async Task<MarketDataStatus> DisconnectAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_settings.Provider != "t4-simulator") throw new InvalidOperationException("T4 is not the selected provider.");
+            if (_stream is not null) await _stream.DisconnectAsync();
+            return View();
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<SessionView> AcceptQuoteAsync(FeedQuote quote)
@@ -140,6 +173,8 @@ public sealed class MarketDataConfiguration
     {
         if (input is null || input.Provider is not ("none" or "external" or "t4-simulator"))
             throw new ArgumentException("Provider must be none, external or t4-simulator.");
+        if (input.HistoryTimeZone is not ("unconfirmed" or "CST" or "America/Chicago"))
+            throw new ArgumentException("Historical timezone must be unconfirmed, CST or America/Chicago.");
         if (input.Instruments is not { Length: 2 } || input.Instruments.Any(m => m is null)
             || !input.Instruments.Select(m => m.Symbol).Order().SequenceEqual(new[] { "MES", "MNQ" }))
             throw new ArgumentException("Provide exactly one MES and one MNQ binding.");

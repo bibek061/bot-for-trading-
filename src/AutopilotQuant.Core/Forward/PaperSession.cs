@@ -28,6 +28,7 @@ public sealed class PaperSession
         // A restart never re-arms trading or resurrects unfilled entry intentions.
         _state.Paused = true;
         _state.Pending.Clear();
+        _state.Quotes.Clear(); // Even a persisted quote within the permitted future-clock skew is not a new feed event.
         _state.PauseReason = "Started paused; fresh adapter quotes and explicit resume required.";
         AddEvent(_state, "Recovery", _state.PauseReason, _started);
         _store.Save(_state);
@@ -85,7 +86,15 @@ public sealed class PaperSession
         return Task.CompletedTask;
     });
 
-    public Task<SessionView> AcceptQuoteAsync(FeedQuote quote) => Change(async (s, b, now) =>
+    public Task<SessionView> AcceptQuoteAsync(FeedQuote quote) => Change((s, b, now) => ApplyQuote(quote, s, b, now));
+
+    public Task<SessionView> AcceptQuotesAsync(IReadOnlyList<FeedQuote> quotes) => Change(async (s, b, now) =>
+    {
+        if (quotes.Count is < 1 or > 128) throw new ArgumentException("Quote batch must contain 1–128 events.");
+        foreach (var quote in quotes) await ApplyQuote(quote, s, b, now);
+    });
+
+    private async Task ApplyQuote(FeedQuote quote, PaperSessionState s, PaperBroker b, DateTimeOffset now)
     {
         var spec = Contract(quote.Symbol);
         ValidateContractId(quote.ContractId);
@@ -142,9 +151,18 @@ public sealed class PaperSession
                 await Monitor(s, b, now);
             }
         }
+    }
+
+    public Task<SessionView> AcceptBarAsync(FeedBar frame) => Change((s, b, now) => ApplyBar(frame, s, b, now));
+
+    public Task<SessionView> LoadWarmupAsync(IReadOnlyList<FeedBar> bars) => Change(async (s, b, now) =>
+    {
+        if (!s.Paused) throw new InvalidOperationException("Pause before loading historical warmup.");
+        if (bars.Count > 1024 || bars.Any(bar => !bar.Warmup)) throw new ArgumentException("Warmup batch is invalid.");
+        foreach (var bar in bars) await ApplyBar(bar, s, b, now);
     });
 
-    public Task<SessionView> AcceptBarAsync(FeedBar frame) => Change((s, b, now) =>
+    private Task ApplyBar(FeedBar frame, PaperSessionState s, PaperBroker b, DateTimeOffset now)
     {
         var bar = frame.Bar ?? throw new ArgumentException("Bar is required.");
         var spec = Contract(bar.Symbol);
@@ -181,7 +199,7 @@ public sealed class PaperSession
             }
         }
         return Task.CompletedTask;
-    });
+    }
 
     public Task<SessionView> MonitorAsync() => Change(Monitor);
 
@@ -194,6 +212,17 @@ public sealed class PaperSession
         s.Contracts.Clear();
         Pause(s, "Market-data configuration changed; fresh quotes and indicator warmup required.", now);
         AddEvent(s, "Market data", s.PauseReason, now);
+        return Task.CompletedTask;
+    }, monitorFirst: false);
+
+    public Task<SessionView> InvalidateMarketDataAsync(string reason) => Change((s, b, now) =>
+    {
+        s.Quotes.Clear();
+        s.Histories.Clear();
+        s.Pending.Clear();
+        Pause(s, reason, now);
+        AddEvent(s, "Market data", reason, now);
+        // Keep bound expiries, positions and protection. Fresh quotes must resolve any exposure.
         return Task.CompletedTask;
     }, monitorFirst: false);
 
@@ -300,7 +329,7 @@ public sealed class PaperSession
                 var bars = s.Histories.GetValueOrDefault(symbol) ?? [];
                 var evaluation = _signals.Evaluate(bars);
                 return new InstrumentView(symbol, s.Contracts.GetValueOrDefault(symbol), s.Quotes.GetValueOrDefault(symbol),
-                    HasFresh(s, symbol, now), bars.TakeLast(100).ToArray(), evaluation.Reason,
+                    HasFresh(s, symbol, now), bars.TakeLast(512).ToArray(), evaluation.Reason,
                     evaluation.Regime.FastEma, evaluation.Regime.SlowEma);
             }).ToArray(), s.Events.AsEnumerable().Reverse().ToArray(), now);
     }

@@ -70,7 +70,7 @@ try {
     Check ((Invoke-WebRequest "$url/api/market-data" -SkipHttpErrorCheck).StatusCode -eq 401) 'Market-data settings require dashboard authentication'
     $marketConfiguration = @{provider='external'; instruments=@(@{symbol='MES'; enabled=$true; exchangeId=''; productId=''; marketId='SYNTHETIC-API-TEST'}, @{symbol='MNQ'; enabled=$false; exchangeId=''; productId=''; marketId=''})}
     $configured = Invoke-RestMethod "$url/api/market-data" -Method Put -ContentType 'application/json' -Body ($marketConfiguration | ConvertTo-Json -Depth 5) -Headers $dashboardHeaders
-    Check ($configured.configured -and $configured.adapterKeyPresent -and !$configured.t4ApiKeyPresent -and !$configured.continuousT4StreamingSupported) 'External contract configuration is ready without claiming a T4 stream'
+    Check ($configured.configured -and $configured.adapterKeyPresent -and !$configured.t4ApiKeyPresent -and !$configured.connection.active) 'External contract configuration is ready without claiming a T4 connection'
     Check ((Invoke-WebRequest "$url/api/market-data" -Method Put -ContentType 'application/json' -Body '{"provider":"t4-live","instruments":[]}' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Live provider configuration rejected'
     Check ((Invoke-WebRequest "$url/api/market-data" -Method Put -ContentType 'application/json' -Body '{"provider":"t4-simulator","instruments":[],"apiKey":"DO-NOT-SAVE"}' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Browser-supplied provider credentials rejected'
     $quote = @{symbol='MES'; contractId='SYNTHETIC-API-TEST'; timestamp=[DateTimeOffset]::UtcNow.ToString('O'); bid=5000; ask=5000.25} | ConvertTo-Json
@@ -86,6 +86,8 @@ try {
     $configured = Invoke-RestMethod "$url/api/market-data" -Method Put -ContentType 'application/json' -Body ($marketConfiguration | ConvertTo-Json -Depth 5) -Headers $dashboardHeaders
     Check (!$configured.configured -and $configured.missing.Count -gt 0) 'Incomplete T4 setup can be saved with explicit missing requirements'
     Check ((Invoke-WebRequest "$url/api/market-data/test" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'T4 test blocked without credentials and complete IDs'
+    Check ((Invoke-WebRequest "$url/api/market-data/connect" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'Continuous T4 connection blocked without complete server configuration'
+    Check ((Invoke-WebRequest "$url/api/market-data/connect" -Method Post -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter credentials cannot operate the provider connection'
     Check ((Invoke-WebRequest "$url/api/feed/quotes" -Method Post -ContentType 'application/json' -Body $quote -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'External injection disabled when T4 is selected'
     $changed = Invoke-RestMethod "$url/api/state" -Headers $dashboardHeaders
     Check ($changed.session.paused -and !$changed.session.instruments[0].fresh -and $null -eq $changed.session.instruments[0].quote) 'Provider change invalidates old quotes and keeps paper paused'

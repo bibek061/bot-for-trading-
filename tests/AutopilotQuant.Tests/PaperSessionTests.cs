@@ -67,6 +67,47 @@ public sealed class PaperSessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Disconnect_Invalidates_Quotes_But_Preserves_Exposure_And_Protection()
+    {
+        await OpenPosition();
+        var paused = await _session.InvalidateMarketDataAsync("Transport disconnected");
+        Assert.True(paused.Paused);
+        Assert.Single(paused.Positions); Assert.Single(paused.Protection);
+        Assert.Empty(paused.Pending);
+        Assert.All(paused.Instruments, i => { Assert.Null(i.Quote); Assert.Empty(i.Bars); });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _session.ControlAsync("resume"));
+        await _session.ControlAsync("flatten");
+        Assert.Single((await _session.ViewAsync()).Positions);
+        _clock.Now = _clock.Now.AddSeconds(1);
+        var closed = await _session.AcceptQuoteAsync(Quote(117m));
+        Assert.Empty(closed.Positions); Assert.Single(closed.Trades);
+    }
+
+    [Fact]
+    public async Task Quote_Batch_Evaluates_Intermediate_Stop_And_Does_Not_Only_Use_Last_Price()
+    {
+        await QueueSignal();
+        _clock.Now = _clock.Now.AddSeconds(1); var entry = Quote();
+        _clock.Now = _clock.Now.AddSeconds(1); var stop = Quote(117m);
+        _clock.Now = _clock.Now.AddSeconds(1); var rebound = Quote(130m);
+        var result = await _session.AcceptQuotesAsync([entry,stop,rebound]);
+        Assert.Empty(result.Positions);
+        Assert.Equal(116.75m,Assert.Single(result.Trades).ExitPrice);
+        Assert.Equal(2,result.Fills.Count);
+        Assert.Equal(130m,result.Instruments[0].Quote!.Bid);
+    }
+
+    [Fact]
+    public async Task Restart_Does_Not_Treat_A_Persisted_Clock_Skewed_Quote_As_New_Data()
+    {
+        await _session.AcceptQuoteAsync(Quote() with { Timestamp = _clock.Now.AddSeconds(1) });
+        _clock.Now = _clock.Now.AddMilliseconds(100);
+        _store.Dispose(); _store = new(_directory); _session = new(_store,_clock);
+        Assert.Null((await _session.ViewAsync()).Instruments[0].Quote);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _session.ControlAsync("resume"));
+    }
+
+    [Fact]
     public async Task Signal_Fills_Only_On_A_Later_Quote_At_Ask_Plus_Slippage()
     {
         await QueueSignal();
