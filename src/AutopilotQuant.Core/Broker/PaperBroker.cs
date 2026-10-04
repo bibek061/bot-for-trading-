@@ -8,6 +8,12 @@ public sealed record PaperBrokerOptions(
     int SlippageTicks,
     bool AllowShorts = false);
 
+public sealed record PaperBrokerState(
+    List<PaperFill> Fills,
+    List<PaperPosition> Positions,
+    List<ClosedPaperTrade> ClosedTrades,
+    Dictionary<string, decimal> MarketPrices);
+
 public sealed record PaperFill(
     string OrderId,
     string PositionId,
@@ -59,7 +65,7 @@ public sealed class PaperBroker : IBroker
     private decimal _totalFees;
     private decimal _realizedGrossProfitLoss;
 
-    public PaperBroker(PaperBrokerOptions options)
+    public PaperBroker(PaperBrokerOptions options, PaperBrokerState? state = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         if (options.InitialEquity <= 0)
@@ -70,6 +76,24 @@ public sealed class PaperBroker : IBroker
             throw new ArgumentOutOfRangeException(nameof(options), "Slippage ticks cannot be negative.");
 
         _options = options;
+        if (state is not null)
+        {
+            _fills.AddRange(state.Fills);
+            _closedTrades.AddRange(state.ClosedTrades);
+            foreach (var position in state.Positions)
+                _openPositions.Add(position.PositionId, position);
+            foreach (var pair in state.MarketPrices)
+                MarkToMarket(pair.Key, pair.Value);
+            _totalFees = _fills.Sum(fill => fill.Fee);
+            _realizedGrossProfitLoss = _closedTrades.Sum(trade => trade.GrossProfitLoss);
+        }
+    }
+
+    public PaperBrokerState CaptureState()
+    {
+        lock (_sync)
+            return new(_fills.ToList(), _openPositions.Values.ToList(), _closedTrades.ToList(),
+                new Dictionary<string, decimal>(_marketPrices));
     }
 
     public IReadOnlyList<PaperFill> Fills

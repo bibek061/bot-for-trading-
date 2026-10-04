@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>Autopilot Quant · Paper workspace</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="app.css"><script src="app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login-shell">
+    <form id="unlock-form" class="login-card">
+      <div class="brand-mark">AQ</div><p class="eyebrow">YOUR LOCAL TRADING WORKSPACE</p>
+      <h1>Research with intent.<br>Trade with control.</h1>
+      <p class="muted">Unlock your private paper session. Live order routing is disabled.</p>
+      <label for="access-key">Local access key</label>
+      <input id="access-key" type="password" autocomplete="off" required minlength="32" placeholder="Paste your dashboard access key">
+      <button class="primary" type="submit">Open workspace <span aria-hidden="true">→</span></button>
+      <p id="login-message" role="status" class="muted">Find dashboard.key in the local data/dashboard folder, or use Dashboard__AccessKey if configured. Your key stays in this tab’s memory.</p>
+      <div class="login-foot"><span class="dot"></span> LOCAL ONLY <span>MES / MNQ</span><span>PAPER EXECUTION</span></div>
+    </form>
+  </div>
+
+  <div id="workspace" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Autopilot Quant home"><span class="brand-mark">AQ</span><span>Autopilot<span class="brand-sub">QUANT WORKSPACE</span></span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="Main navigation">
+        <button class="nav-button active" data-panel="overview" aria-current="page"><span aria-hidden="true">▦</span> Overview</button>
+        <button class="nav-button" data-panel="research"><span aria-hidden="true">⌁</span> Replay lab</button>
+        <button class="nav-button" data-panel="risk"><span aria-hidden="true">◇</span> Risk & settings</button>
+      </nav>
+      <div class="sidebar-bottom"><span class="paper-label">PAPER ENVIRONMENT</span><p>Simulated execution.<br>No real orders.</p><button id="lock" class="text-button">Lock workspace ↗</button></div>
+    </aside>
+    <div class="main-shell">
+      <header class="topbar"><span>Workspace <span class="slash">/</span> <span id="breadcrumb">Overview</span></span><div><span id="connection" class="connection">● Connected locally</span><span class="account">PAPER · 001</span></div></header>
+      <main>
+        <div class="page-heading"><div><p class="eyebrow">AUTOPILOT QUANT</p><h1 id="page-title">Paper overview</h1><p id="page-description" class="muted">Your strategy, exposure, and execution in one place.</p></div><div class="asof">SERVER TIME<span id="server-time">—</span></div></div>
+        <div id="notice" class="notice" role="status"><span class="notice-icon">i</span><div><strong id="provider-status">Market data not configured</strong><p id="provider-detail">Connect an authorized adapter to begin forward paper testing. No prices are generated.</p></div><span class="tag">SETUP REQUIRED</span></div>
+        <div id="message" class="message" role="alert" hidden></div>
+
+        <section id="overview" class="panel-page" aria-label="Overview">
+          <div class="metric-grid">
+            <article class="metric"><p>Paper equity <span>USD</span></p><strong id="equity">—</strong><small>Includes fees & marked exposure</small></article>
+            <article class="metric"><p>Realized P/L <span>NET</span></p><strong id="realized">—</strong><small>Closed paper trades, after fees</small></article>
+            <article class="metric"><p>Unrealized P/L <span>GROSS</span></p><strong id="unrealized">—</strong><small id="mark-status">Awaiting executable bid prices</small></article>
+            <article class="metric"><p>Drawdown <span>PEAK</span></p><strong id="drawdown">—</strong><small id="drawdown-limit">—</small></article>
+          </div>
+          <div class="overview-grid">
+            <article class="card chart-card"><div class="card-heading"><div><h2>Market workspace</h2><p id="contract-label">No contract connected</p></div><div class="segmented" aria-label="Chart instrument"><button data-symbol="MES" class="selected">MES</button><button data-symbol="MNQ">MNQ</button></div></div>
+              <div class="quote-strip"><strong id="quote">—</strong><span id="quote-state" class="tag">NO DATA</span><span id="ema">EMA20 — / EMA50 —</span></div>
+              <div class="chart-container"><canvas id="chart" aria-label="Completed five-minute candle chart" role="img"></canvas><div id="chart-empty" class="empty-chart"><span class="chart-symbol">⌁</span><h3>Waiting for market data</h3><p>Completed five-minute bars will appear here.<br>Use Replay lab to research your own CSV data.</p></div></div>
+              <div class="chart-footer"><span>5 MIN · COMPLETED BARS</span><span id="quote-time">Last quote: —</span></div><p id="signal-reason" class="micro">Waiting for indicator history.</p>
+            </article>
+            <article class="card strategy-card"><div class="card-heading"><h2>Strategy control</h2><span id="bot-state" class="tag">PAUSED</span></div><div class="strategy-icon">↗</div><h3>EMA20 pullback</h3><p class="muted">Long-only · MES / MNQ</p><div class="rule-row"><span>Signal</span><strong>Completed-bar reclaim</strong></div><div class="rule-row"><span>Entry</span><strong>Next fresh ask + slippage</strong></div><div class="rule-row"><span>Exit protection</span><strong>Simulated stop / target</strong></div><p id="pause-reason" class="reason">Waiting for setup.</p><div class="control-grid"><button id="resume" class="primary" data-action="resume">Resume paper</button><button data-action="pause">Pause entries</button></div><button class="full-width subtle" data-action="cancel-pending">Cancel pending entries</button><button id="flatten" class="danger full-width">Flatten paper positions</button><p class="micro">Pausing retains simulated protection. Exits require fresh quotes and a running server.</p></article>
+          </div>
+          <article class="card"><div class="card-heading"><h2>Open positions <span id="position-count" class="count">0</span></h2><span class="muted">Paper account exposure</span></div><div class="table-scroll"><table><thead><tr><th>Instrument</th><th>Side / qty</th><th>Entry</th><th>Stop</th><th>Target</th><th>Opened</th></tr></thead><tbody id="positions"></tbody></table></div></article>
+          <div class="two-column"><article class="card"><div class="card-heading"><h2>Activity</h2><span class="muted">Latest 200 events</span></div><div id="events" class="event-list"></div></article><article class="card"><div class="card-heading"><h2>Execution history</h2><span class="muted">Latest 100 fills</span></div><div class="table-scroll"><table><thead><tr><th>Time</th><th>Instrument</th><th>Side</th><th>Fill</th><th>Fee</th></tr></thead><tbody id="fills"></tbody></table></div></article></div>
+        </section>
+
+        <section id="research" class="panel-page" hidden aria-label="Replay lab">
+          <article class="card upload-card"><p class="eyebrow">HISTORICAL RESEARCH</p><h2>Bring your own market data.</h2><p class="muted">Upload a licensed MES/MNQ CSV to this local server. The server saves the report; it does not retain the raw CSV. Replay results are separate from your forward paper account.</p><form id="replay-form"><label for="csv">OHLCV CSV · up to 2 MB / 5,000 bars</label><div class="upload-controls"><input type="file" id="csv" accept=".csv,text/csv" required><button class="primary" id="run-replay">Run paper replay →</button></div></form><p class="micro">Columns: Symbol,Timestamp,Open,High,Low,Close,Volume. ISO timestamps need Z or an explicit UTC offset. Research defaults: $10,000 equity, 1 tick slippage, $1.25 fee per side.</p><p class="research-warning">Legacy replay assumes same-close fills and calendar-day exits. It does not model spreads, partial fills, queue position, or intrabar stops. Results do not establish profitability.</p></article>
+          <article id="replay-detail" class="card" hidden><div class="card-heading"><h2 id="replay-title">Replay results</h2><button id="download-report">Export JSON ↓</button></div><div id="replay-metrics" class="replay-metrics"></div><p id="replay-assumptions" class="micro"></p><div class="table-scroll"><table><thead><tr><th>Instrument</th><th>Entry</th><th>Exit</th><th>Net P/L</th><th>Closed</th></tr></thead><tbody id="replay-trades"></tbody></table></div></article>
+          <article class="card"><div class="card-heading"><h2>Saved research</h2><span class="muted">Stored on this computer</span></div><div class="table-scroll"><table><thead><tr><th>Dataset</th><th>Run date</th><th>Bars</th><th>Trades</th><th>Net P/L</th><th></th></tr></thead><tbody id="replays"></tbody></table></div></article>
+        </section>
+
+        <section id="risk" class="panel-page" hidden aria-label="Risk settings">
+          <div class="two-column"><article class="card"><div class="card-heading"><h2>Paper risk limits</h2><span class="tag">SERVER ENFORCED</span></div><p class="muted">Pause and flatten before editing. Limits are research defaults, not validated trading parameters.</p><form id="settings-form" class="settings-form"><label>Contracts per entry<input name="quantity" type="number" min="1" max="10" required></label><label>Maximum open positions<input name="maxOpenPositions" type="number" min="1" max="2" required></label><label>Daily loss limit (%)<input name="dailyLossLimitPct" type="number" min="0.01" max="25" step="0.01" required></label><label>Maximum drawdown (%)<input name="maxDrawdownPct" type="number" min="0.01" max="50" step="0.01" required></label><label>Risk per trade (%)<input name="riskPerTradePct" type="number" min="0.01" max="5" step="0.01" required></label><label>Stop distance (ticks)<input name="stopTicks" type="number" min="1" max="10000" required></label><label>Target distance (ticks)<input name="targetTicks" type="number" min="1" max="10000" required></label><label>Maximum spread (ticks)<input name="maxSpreadTicks" type="number" min="1" max="100" required></label><label>Quote timeout (seconds)<input name="quoteMaxAgeSeconds" type="number" min="1" max="60" required></label><label>Fee per contract / side ($)<input name="feePerContract" type="number" min="0" max="100" step="0.01" required></label><label>Slippage (ticks / side)<input name="slippageTicks" type="number" min="0" max="100" required></label><div></div><label>Weekday entry start (ET)<input name="entryStart" type="time" required></label><label>Entry end / flatten (ET)<input name="entryEnd" type="time" required></label><button class="primary" type="submit">Save paper settings</button></form></article><div><article class="card"><div class="card-heading"><h2>Session health</h2></div><div class="rule-row"><span>Daily loss</span><strong id="daily-loss">—</strong></div><div class="rule-row"><span>Risk halt</span><strong id="risk-halt">—</strong></div><div class="rule-row"><span>Fees paid</span><strong id="fees">—</strong></div><div class="rule-row"><span>Session reset</span><strong>18:00 America/New_York</strong></div><p class="micro">A new session can clear a daily-loss halt; resuming remains explicit. Drawdown halts persist. Holidays and early closes require operator scheduling.</p></article><article class="card"><div class="card-heading"><h2>Provider setup</h2><span class="tag">NEXT STEP</span></div><p class="muted">No T4 connector or credentials are bundled. A future server-side adapter must provide contract-specific quotes and completed bars.</p><ol class="setup-list"><li>Obtain authorized simulator and market-data access.</li><li>Implement and validate the provider adapter.</li><li>Configure a separate MarketData__AdapterKey on the server.</li><li>Warm up indicators, check fresh quotes, then resume paper trading.</li></ol><p class="micro">The adapter key is separate from the dashboard key. Never put provider credentials in browser code.</p></article></div></div>
+        </section>
+        <footer><span><span class="dot"></span> LOCAL PAPER WORKSPACE</span><span>Research software · Live routing disabled · v0.2</span></footer>
+      </main>
+    </div>
+  </div>
+  <dialog id="flatten-dialog"><h2>Flatten paper positions?</h2><p>This cancels pending entries, pauses the strategy, and closes simulated positions at fresh bid prices with slippage. Stale symbols remain pending until a new quote arrives.</p><div class="dialog-actions"><button id="cancel-flatten">Keep positions</button><button id="confirm-flatten" class="danger">Flatten paper positions</button></div></dialog>
+</body>
+</html>

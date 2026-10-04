@@ -1,6 +1,6 @@
 # Autopilot Quant
 
-Experimental .NET 10 research prototype for MES/MNQ futures. It currently supports historical CSV replay, market-regime classification, a long-only EMA20 pullback/reclaim signal, risk-gated simulated orders, and paper-trade reporting.
+Experimental .NET 10 research prototype for MES/MNQ futures. It supports historical CSV replay, market-regime classification, a long-only EMA20 pullback/reclaim signal, risk-gated simulated orders, and paper-trade reporting. A local web dashboard now adds persistent forward paper sessions, risk controls, saved replay reports, and authenticated ingress for a future data adapter. See [dashboard setup and limitations](DASHBOARD.md).
 
 ## Safety and scope
 
@@ -22,6 +22,10 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It currently suppor
 - Paper coordinator prevents duplicate/out-of-order bar processing and runs risk checks before entries.
 - CSV replay runner sorts bars, applies configured timezone boundaries, simulates fills, and exports JSON run/trade reports.
 - GitHub Pages page previews user-selected CSV files locally and documents the project limitations; it does not include market data or replay results.
+- Local ASP.NET Core dashboard with an operator access key, loopback-only hosting, separate adapter authentication, and explicit provider-not-configured state.
+- Forward paper entries wait for a later quote and simulate buys at ask plus slippage; marked exposure and exits use bid. Simulated stops/targets continue while entries are paused.
+- Atomic local state snapshots, single-writer protection, paused restart recovery, daily loss/drawdown halts, scheduled paper flatten, and an independent staleness monitor.
+- Saved CSV replay reports on the local server; replay uploads do not alter the forward account. The legacy replay fill assumptions remain explicitly labeled.
 
 ## Historical replay
 
@@ -35,6 +39,8 @@ Use real historical data only when authorized and correctly licensed. Results ar
 ## Not implemented yet
 
 - T4 quote ingestion, reconnect handling, contract rollover/discovery, and all live order routing.
-- Persistent trade/replay storage, breakout strategy, learning/allocation, dashboard, monitoring, and deployment automation.
+- Broker order state machines/reconciliation, actual broker-held protection, margin checks, partial fills, and execution certification.
+- Hosted authentication/MFA, external alerts, production storage, automated backup/deployment/rollback, exchange holiday calendars, breakout strategy, and learning/allocation.
+- CI builds/tests on Windows and Linux are configured; production deployment remains unimplemented.
 
 This project is experimental software, not financial advice, a broker, or a recommendation to trade. See the repository [README](../README.md) and [MIT License](../LICENSE).
