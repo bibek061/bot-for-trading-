@@ -30,6 +30,8 @@ Experimental .NET 10 research prototype for MES/MNQ futures. It supports histori
 - [Public.com reference quotes](PUBLIC_API.md) authenticate on the server and display SPY/QQQ last, bid and ask with source timestamps and independent freshness labels. Optional polling is throttled and stops when the page is inactive. No balances or orders are requested.
 - Forward paper entries wait for a later quote and simulate buys at ask plus slippage; marked exposure and exits use bid. Simulated stops/targets continue while entries are paused.
 - Atomic local state snapshots, single-writer protection, paused restart recovery, daily loss/drawdown halts, scheduled paper flatten, and an independent staleness monitor.
+- Visible save/recovery status with persistent session identity and revision, local file locations,
+  and authenticated downloads of the full committed paper account for manual backup/recovery.
 - Saved CSV replay reports on the local server; replay uploads do not alter the forward account. The legacy replay fill assumptions remain explicitly labeled.
 
 ## Historical replay

@@ -71,6 +71,20 @@ operation, prefer a state directory outside OneDrive or other syncing software.
 
 ## Controls and recovery
 
+The save indicator shows the last successful local write and its revision. **Risk & settings →
+Saved paper session** displays the stable session ID, actual storage paths, previous-snapshot
+availability and the snapshot recovered on this server start. Existing version-1 session files
+gain this metadata without resetting positions, history or account equity. Reading status or
+downloading a backup does not advance the saved revision. A storage fault is shown explicitly;
+an unreachable server changes the indicator to unverified.
+
+**Download paper session backup** captures the full committed account under the session lock,
+including positions, simulated protection, all retained fills/trades, risk baselines, settings,
+bar history and activity. It requires the operator key and excludes dashboard/provider secrets,
+market-data configuration, Public.com caches and replay reports. The API is
+`GET /api/session/snapshot`; it returns a JSON attachment with caching disabled. It is a local
+account backup, not an automatic restore or a complete installation backup.
+
 | Control | Behavior |
 |---|---|
 | Resume | Requires fresh quotes, weekday entry window, no risk halt, no incomplete flatten |
@@ -90,7 +104,13 @@ closed. Pending flatten waits for fresh quotes. Local simulated protection stops
 server stops; it is **not broker-held protection**. Restart requires new quotes and explicit
 resume. Inspect recovered positions before resuming.
 
-State: `paper-session.json`; previous snapshot: `.bak`. Back up after stopping the service.
+State: `paper-session.json`; previous snapshot: `paper-session.json.bak`.
+The dashboard download can safely capture the paper account while the service runs; stop the
+service before copying the whole data directory or restoring a downloaded account snapshot.
+Preserve the current session and `.bak` first, then copy the chosen download to the session
+path shown in Risk & settings. Keep the filename `paper-session.json`. The next start restores
+exposure and history but clears pending entries/quotes and starts paused. Separate replay files
+and provider settings require their own copies when moving the installation.
 For corrupt-state recovery, stop, preserve the corrupt file, inspect/restore a known-good
 backup, then restart paused. An older backup can lose recent simulated activity. There is
 no browser reset button that erases trading history.

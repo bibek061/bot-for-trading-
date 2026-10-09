@@ -4,6 +4,7 @@ const referenceChart = new TradingViewReference.ReferenceChart(document);
 let accessKey = '', state, selectedSymbol = 'MES', currentReplay, polling = false;
 let providerState, marketDataDirty = false, marketDataBusy = false;
 let publicDataState, publicRefreshBusy = false, publicAutoNext = 0;
+let snapshotBusy = false;
 const publicHistory = new Map();
 const isEtf = () => ['SPY','QQQ'].includes(selectedSymbol);
 function publicAuto(enabled) { $('public-auto').checked = enabled; $('overview-public-auto').checked = enabled; }
@@ -42,6 +43,7 @@ function table(id, rows, empty, columns) {
 function pnl(id, value) { text(id, usd(value)); $(id).classList.toggle('positive', value > 0); $(id).classList.toggle('negative', value < 0); }
 function render(result) {
   state = result.session;
+  renderStorage(state.storage);
   text('connection', '● Connected locally'); $('connection').classList.remove('negative');
   text('server-time', date(state.serverTime)); text('equity', usd(state.equity));
   pnl('realized', state.realizedNet); pnl('unrealized', state.unrealizedGross);
@@ -53,7 +55,7 @@ function render(result) {
   renderMarketData(result.provider);
   renderPublicData(result.publicData);
   text('mark-status', state.positions.length === 0 ? 'No open paper exposure' : state.positions.some(p => !state.instruments.find(i => i.symbol === p.symbol)?.fresh) ? 'STALE MARKS · exposure needs fresh data' : 'Marked at latest received bid prices');
-  $('resume').disabled = !state.paused || state.riskHalted || !state.instruments.some(i => i.fresh);
+  $('resume').disabled = !state.paused || state.riskHalted || state.storage?.status !== 'saved' || !state.instruments.some(i => i.fresh);
   table('positions', state.positions.map(p => { const protection = state.protection.find(x => x.positionId === p.positionId); return [p.symbol,`${p.side} / ${p.quantity}`,number(p.entryPrice),protection ? number(protection.stopPrice) : 'MISSING',protection ? number(protection.targetPrice) : 'MISSING',date(p.openedAtUtc)]; }), 'No open paper positions. New entries require an armed strategy and fresh data.', 6);
   table('fills', state.fills.map(f => [time(f.filledAtUtc),f.symbol,`${f.side} ${f.quantity}`,number(f.fillPrice),usd(f.fee)]), 'No paper fills yet.', 5);
   $('events').replaceChildren(); state.events.forEach(event => {
@@ -67,6 +69,7 @@ async function refresh() {
   if (!accessKey || polling) return; polling = true;
   try { render(await api('state')); }
   catch (error) {
+    renderStorage(null);
     text('connection', '● Server unavailable'); $('connection').classList.add('negative');
     $('resume').disabled = true; text('quote-state', 'UNVERIFIED');
     publicAuto(false); text('public-data-status', 'UNVERIFIED');
@@ -76,6 +79,39 @@ async function refresh() {
   } finally { polling = false; }
 }
 setInterval(refresh, 1000);
+
+function renderStorage(storage) {
+  const saved = storage?.status === 'saved', fault = storage?.status === 'fault';
+  text('storage-summary', saved ? `Saved locally · ${date(storage.lastSavedAt)} · revision ${storage.revision}. Recovery and backups in Risk & settings.`
+    : fault ? 'Local save failed. Paper execution is blocked; inspect the data directory before restarting.'
+    : 'Local save status unverified. Reconnect to check the saved paper session.');
+  $('storage-summary').classList.toggle('negative', !saved);
+  text('storage-status', saved ? 'SAVED LOCALLY' : fault ? 'STORAGE FAULT' : 'UNVERIFIED');
+  text('storage-saved-at', storage?.lastSavedAt ? date(storage.lastSavedAt) : '—');
+  text('storage-session', storage ? `${storage.sessionId} / ${storage.revision}` : '—');
+  text('storage-recovery', storage ? storage.recovered
+    ? `Restored on ${date(storage.startedAt)} from the snapshot saved ${date(storage.recoveredSnapshotAt)}. Entries started paused.`
+    : `New local session started ${date(storage.startedAt)}. Entries started paused.` : '—');
+  text('storage-backup-status', storage ? storage.backupAvailable ? 'Previous snapshot available' : 'Created after the next successful save' : '—');
+  text('storage-path', storage?.snapshotPath || '—');
+  text('storage-backup-path', storage?.backupPath || '—');
+  $('download-session').disabled = !saved || snapshotBusy;
+}
+$('download-session').onclick = async () => {
+  if (!accessKey || snapshotBusy || state?.storage?.status !== 'saved') return;
+  const requestKey = accessKey;
+  snapshotBusy = true; renderStorage(state.storage);
+  try {
+    const snapshot = await api('session/snapshot');
+    if (accessKey !== requestKey) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'}));
+    const link = document.createElement('a'); link.href = url;
+    link.download = `paper-session-${snapshot.sessionId}-r${snapshot.revision}.json`; link.click();
+    setTimeout(() => URL.revokeObjectURL(url),1000);
+    message('Paper session backup downloaded. It excludes provider credentials and separate replay reports.');
+  } catch (error) { message(error.message); }
+  finally { snapshotBusy = false; if (accessKey === requestKey) renderStorage(state.storage); }
+};
 document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () => {
   const name = button.dataset.panel;
   document.querySelectorAll('.panel-page').forEach(panel => panel.hidden = panel.id !== name);

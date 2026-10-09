@@ -77,6 +77,9 @@ try {
     Check ((Invoke-WebRequest "$url/api/state" -Headers (@{'Host'='untrusted.example'} + $dashboardHeaders) -SkipHttpErrorCheck).StatusCode -eq 403) 'DNS-rebinding host rejected'
     $initial = Invoke-RestMethod "$url/api/state" -Headers $dashboardHeaders
     Check ($initial.session.mode -eq 'PAPER' -and $initial.session.paused -and !$initial.provider.liveRoutingEnabled) 'Startup is paused paper mode with live routing disabled'
+    Check ($initial.session.storage.status -eq 'saved' -and !$initial.session.storage.recovered -and $initial.session.storage.lastSavedAt -and $initial.session.storage.revision -gt 0) 'New paper session reports committed local storage and a saved revision'
+    Check ((Invoke-WebRequest "$url/api/session/snapshot" -SkipHttpErrorCheck).StatusCode -eq 401) 'Session backup requires operator authentication'
+    Check ((Invoke-WebRequest "$url/api/session/snapshot" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot download paper account backups'
     Check ((Invoke-WebRequest "$url/api/control/resume" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 409) 'Resume rejected without fresh data'
     $fixture = Join-Path $repository 'tests/AutopilotQuant.Tests/Fixtures/sample_mes_5m_synthetic.csv'
     $run = Invoke-RestMethod "$url/api/replays" -Method Post -ContentType 'text/csv' -InFile $fixture -Headers (@{'X-File-Name'='SYNTHETIC%20TEST%20ONLY'} + $dashboardHeaders)
@@ -86,11 +89,16 @@ try {
     $settings = $after.session.settings
     $settings.stopTicks = 24
     Invoke-RestMethod "$url/api/settings" -Method Put -ContentType 'application/json' -Body ($settings | ConvertTo-Json) -Headers $dashboardHeaders | Out-Null
+    $download = Invoke-WebRequest "$url/api/session/snapshot" -Headers $dashboardHeaders
+    $snapshot = $download.Content | ConvertFrom-Json
+    Check ($snapshot.settings.stopTicks -eq 24 -and $snapshot.sessionId -eq $initial.session.storage.sessionId -and $snapshot.revision -gt $initial.session.storage.revision -and $null -ne $snapshot.broker) 'Downloaded snapshot contains the full committed paper account and saved settings'
+    Check (($download.Headers['Content-Disposition'] -join ' ') -match 'attachment' -and ($download.Headers['Cache-Control'] -join ' ') -match 'no-store' -and !$download.Content.Contains($dashboardHeaders['X-Dashboard-Key']) -and !$download.Content.Contains($adapterHeaders['X-Adapter-Key'])) 'Backup response downloads privately without dashboard or adapter credentials'
     Check ((Invoke-WebRequest "$url/api/replays" -Method Post -ContentType 'text/csv' -Body 'bad csv' -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Malformed CSV returns a useful client error'
     $server.Kill($true); $server.WaitForExit(); $server.Dispose(); $server = $null
     $server = Start-TestServer $true
     $restored = Invoke-RestMethod "$url/api/state" -Headers $dashboardHeaders
     Check ($restored.session.settings.stopTicks -eq 24 -and $restored.session.paused) 'Settings survive restart and engine stays paused'
+    Check ($restored.session.storage.recovered -and $restored.session.storage.sessionId -eq $snapshot.sessionId -and $restored.session.storage.revision -gt $snapshot.revision -and $restored.session.storage.backupAvailable -and $restored.session.storage.recoveredSnapshotAt) 'Restart reports recovery with stable session identity, a newer revision and a previous snapshot'
     $saved = Invoke-RestMethod "$url/api/replays/$($run.id)" -Headers $dashboardHeaders
     Check ($saved.id -eq $run.id) 'Replay report survives restart'
     Check ((Invoke-WebRequest "$url/api/market-data" -SkipHttpErrorCheck).StatusCode -eq 401) 'Market-data settings require dashboard authentication'

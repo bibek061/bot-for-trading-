@@ -12,6 +12,8 @@ public sealed class PaperSession
     private readonly PaperSessionStore _store;
     private readonly TimeProvider _clock;
     private readonly DateTimeOffset _started;
+    private readonly bool _recovered;
+    private readonly DateTimeOffset? _recoveredSnapshotAt;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly LongPullbackSignalEngine _signals = new();
     private PaperSessionState _state;
@@ -22,7 +24,9 @@ public sealed class PaperSession
         _store = store;
         _clock = clock ?? TimeProvider.System;
         _started = _clock.GetUtcNow();
+        _recovered = store.HasSnapshot;
         _state = store.Load();
+        _recoveredSnapshotAt = _state.SavedAt ?? store.SnapshotLastWriteAt;
         ValidateSettings(_state.Settings);
         _ = Broker(_state);
         // A restart never re-arms trading or resurrects unfilled entry intentions.
@@ -31,7 +35,7 @@ public sealed class PaperSession
         _state.Quotes.Clear(); // Even a persisted quote within the permitted future-clock skew is not a new feed event.
         _state.PauseReason = "Started paused; fresh adapter quotes and explicit resume required.";
         AddEvent(_state, "Recovery", _state.PauseReason, _started);
-        _store.Save(_state);
+        Save(_state, _started);
     }
 
     public async Task<SessionView> ViewAsync()
@@ -39,6 +43,26 @@ public sealed class PaperSession
         await _gate.WaitAsync();
         try { return await View(_state, _clock.GetUtcNow()); }
         finally { _gate.Release(); }
+    }
+
+    // Capture the full committed state under the same gate used for fills and saves.
+    // Export does not run the monitor, arm the strategy or mutate the session.
+    public async Task<byte[]> ExportSnapshotAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_storageFailed) throw new IOException("Storage failed; inspect the data directory before exporting.");
+            return JsonSerializer.SerializeToUtf8Bytes(_state, PaperSessionStore.Json);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private void Save(PaperSessionState state, DateTimeOffset now)
+    {
+        state.Revision = checked(state.Revision + 1);
+        state.SavedAt = now;
+        _store.Save(state);
     }
 
     public Task<SessionView> ControlAsync(string action) => Change(async (s, b, now) =>
@@ -302,7 +326,7 @@ public sealed class PaperSession
             var after = JsonSerializer.SerializeToUtf8Bytes(next, PaperSessionStore.Json);
             if (!before.AsSpan().SequenceEqual(after))
             {
-                try { _store.Save(next); }
+                try { Save(next, now); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     _storageFailed = true;
@@ -331,7 +355,9 @@ public sealed class PaperSession
                 return new InstrumentView(symbol, s.Contracts.GetValueOrDefault(symbol), s.Quotes.GetValueOrDefault(symbol),
                     HasFresh(s, symbol, now), bars.TakeLast(512).ToArray(), evaluation.Reason,
                     evaluation.Regime.FastEma, evaluation.Regime.SlowEma);
-            }).ToArray(), s.Events.AsEnumerable().Reverse().ToArray(), now);
+            }).ToArray(), s.Events.AsEnumerable().Reverse().ToArray(), now,
+            new(_storageFailed ? "fault" : "saved", s.SessionId, s.Revision, s.SavedAt, _recovered,
+                _recoveredSnapshotAt, _started, _store.SnapshotPath, _store.BackupPath, File.Exists(_store.BackupPath)));
     }
 
     private static PaperBroker Broker(PaperSessionState s) => new(new(s.Settings.InitialEquity,

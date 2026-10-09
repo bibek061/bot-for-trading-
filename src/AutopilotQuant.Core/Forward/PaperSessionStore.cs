@@ -9,11 +9,15 @@ public sealed class PaperSessionStore : IDisposable
     private readonly string _path;
     private readonly FileStream _lease;
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
+    public string SnapshotPath => _path;
+    public string BackupPath => _path + ".bak";
+    public bool HasSnapshot => File.Exists(_path);
+    public DateTimeOffset? SnapshotLastWriteAt => HasSnapshot ? new DateTimeOffset(File.GetLastWriteTimeUtc(_path)) : null;
 
     public PaperSessionStore(string directory)
     {
         Directory.CreateDirectory(directory);
-        _path = Path.Combine(directory, "paper-session.json");
+        _path = Path.GetFullPath(Path.Combine(directory, "paper-session.json"));
         _lease = new FileStream(Path.Combine(directory, "paper-session.lock"),
             FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
     }
@@ -24,6 +28,8 @@ public sealed class PaperSessionStore : IDisposable
         var state = JsonSerializer.Deserialize<PaperSessionState>(File.ReadAllBytes(_path), Json)
             ?? throw new InvalidDataException("Paper session is empty.");
         if (state.Version != 1) throw new InvalidDataException("Unsupported paper session version.");
+        if (!Guid.TryParseExact(state.SessionId, "N", out _) || state.Revision is < 0 or long.MaxValue)
+            throw new InvalidDataException("Invalid paper session identity or revision.");
         return state;
     }
 

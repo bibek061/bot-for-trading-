@@ -12,6 +12,7 @@ class Element {
   insertRow() { const row=new Element(); this.append(row); return row; }
   insertCell() { const cell=new Element(); this.append(cell); return cell; }
   setAttribute() {} removeAttribute() {}
+  click() { if (this.download) downloads.push({filename:this.download,url:this.href}); }
   descendants() { return this.children.flatMap(child => [child,...child.descendants()]); }
   querySelector(selector) { return this.descendants().find(node => selector === `[name=${node.name}]`); }
   querySelectorAll(selector) { return selector === 'input:not([type=checkbox])'
@@ -26,6 +27,8 @@ const symbols=['SPY','QQQ','MES','MNQ'].map(symbol => Object.assign(new Element(
 const panels=['overview','research','market-data','tradingview','risk'];
 const navigation=panels.map(panel => Object.assign(new Element(),{dataset:{panel}}));
 const listeners={}, intervals=[], requests=[], chartUpdates=[];
+const downloads=[];
+let stateOffline=false;
 const document={hidden:false, getElementById(id) { assert(elements.has(id),`Missing HTML element ${id}`); return elements.get(id); },
   createElement() { return new Element(); }, createTextNode() { return new Element(); },
   addEventListener(name,callback) { listeners[name]=callback; },
@@ -43,6 +46,9 @@ const fixture={session:{serverTime:'2026-10-04T15:00:00Z',equity:10000,realizedN
   positions:[],pending:[],protection:[],fills:[],events:[],instruments},
   provider:{configured:false,name:'T4 simulator',status:'Futures setup incomplete',detail:'Configure futures access',missing:['Credentials required'],
     authentication:{method:'not-configured'},settings:{provider:'t4-simulator',historyTimeZone:'unconfirmed',instruments}}};
+fixture.session.storage={status:'saved',sessionId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',revision:4,lastSavedAt:'2026-10-04T14:59:00Z',
+  recovered:true,recoveredSnapshotAt:'2026-10-04T14:30:00Z',startedAt:'2026-10-04T14:58:00Z',
+  snapshotPath:'C:/paper-test/paper-session.json',backupPath:'C:/paper-test/paper-session.json.bak',backupAvailable:true};
 const bars=[{timestamp:'2026-10-02T13:30:00Z',open:500.01,high:501.01,low:499.01,close:500.11,volume:100}];
 let currentTime=Date.parse('2026-10-04T15:00:00Z');
 class Clock extends Date { static now() { return currentTime; } }
@@ -52,7 +58,8 @@ const context=vm.createContext({document,Node:Element,Intl,Date:Clock,console,UR
   MarketChart:class { update(bars,symbol,options={}) { chartUpdates.push({bars,symbol,options}); } },
   async fetch(url,options) {
     requests.push({url,options}); let body;
-    if (url==='/api/state') body={...fixture,publicData:quoteView};
+    if (url==='/api/state') { if (stateOffline) throw new Error('Test server offline'); body={...fixture,publicData:quoteView}; }
+    else if (url==='/api/session/snapshot') body={version:1,sessionId:fixture.session.storage.sessionId,revision:4,broker:{fills:[],positions:[]}};
     else if (url==='/api/replays') body=[];
     else if (url==='/api/market-data/public/refresh') body=quoteView={secretPresent:true,status:'snapshot',message:'Provider snapshot',quotes:
       ['SPY','QQQ'].map(symbol => ({symbol,last:500.12,lastAt:'2026-10-02T20:00:00Z',lastFresh:false,bid:500.1,bidFresh:false,ask:500.2,askFresh:false}))};
@@ -92,6 +99,25 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
   assert.equal(el('public-auto').checked,false);
   assert.match(el('provider-status').textContent,/Futures setup/);
   console.log('PASS: Switching to MES restores its own empty futures chart without ETF substitution');
+
+  assert.match(el('storage-summary').textContent,/Saved locally/);
+  assert.match(el('storage-recovery').textContent,/Restored on/);
+  assert.equal(el('storage-path').textContent,fixture.session.storage.snapshotPath);
+  await el('download-session').onclick();
+  assert.equal(downloads.length,1);
+  assert.equal(downloads[0].filename,`paper-session-${fixture.session.storage.sessionId}-r4.json`);
+  fixture.session.storage.status='fault'; instruments[0].fresh=true;
+  await intervals[0]();
+  assert.equal(el('download-session').disabled,true);
+  assert.equal(el('resume').disabled,true);
+  assert.match(el('storage-status').textContent,/STORAGE FAULT/);
+  stateOffline=true; await intervals[0]();
+  assert.equal(el('storage-status').textContent,'UNVERIFIED');
+  assert.equal(el('download-session').disabled,true);
+  stateOffline=false; instruments[0].fresh=false; fixture.session.storage.status='saved';
+  await intervals[0]();
+  assert.equal(el('download-session').disabled,false);
+  console.log('PASS: Saved-session recovery and backup download are shown; storage faults and lost connections disable export and resume');
 
   symbols[0].onclick(); await flush();
   el('overview-public-auto').checked=true; el('overview-public-auto').onchange(); await flush();

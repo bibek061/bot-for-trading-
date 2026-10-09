@@ -1,5 +1,7 @@
 using AutopilotQuant.Core.Forward;
 using AutopilotQuant.Core.MarketData;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace AutopilotQuant.Tests;
@@ -287,6 +289,7 @@ public sealed class PaperSessionTests : IDisposable
     public async Task Failed_Persistence_Does_Not_Publish_A_Fill_And_Blocks_Further_Mutations()
     {
         await QueueSignal();
+        var committed = (await _session.ViewAsync()).Storage;
         // Force the snapshot write to fail without changing the committed primary.
         Directory.CreateDirectory(Path.Combine(_directory, "paper-session.json.tmp"));
         _clock.Now = _clock.Now.AddSeconds(1);
@@ -296,6 +299,10 @@ public sealed class PaperSessionTests : IDisposable
         Assert.Empty(view.Fills);
         Assert.True(view.Paused);
         Assert.Contains("Storage fault", view.PauseReason);
+        Assert.Equal("fault", view.Storage.Status);
+        Assert.Equal(committed.Revision, view.Storage.Revision);
+        Assert.Equal(committed.LastSavedAt, view.Storage.LastSavedAt);
+        await Assert.ThrowsAsync<IOException>(() => _session.ExportSnapshotAsync());
         Assert.Empty(_store.Load().Broker.Fills);
         await Assert.ThrowsAsync<IOException>(() => _session.ControlAsync("resume"));
     }
@@ -317,6 +324,99 @@ public sealed class PaperSessionTests : IDisposable
         File.WriteAllText(Path.Combine(_directory, "paper-session.json"), "not-json");
         _store = new(_directory);
         Assert.Throws<System.Text.Json.JsonException>(() => new PaperSession(_store, _clock));
+    }
+
+    [Fact]
+    public async Task Saved_Revision_Advances_Only_On_Commits_And_Identity_Survives_Restart()
+    {
+        var first = await _session.ViewAsync();
+        Assert.Equal("saved", first.Storage.Status);
+        Assert.False(first.Storage.Recovered);
+        Assert.Null(first.Storage.RecoveredSnapshotAt);
+        Assert.Equal(1, first.Storage.Revision);
+        Assert.Equal(_clock.Now, first.Storage.LastSavedAt);
+        Assert.False(first.Storage.BackupAvailable);
+        Assert.Equal(_store.SnapshotPath, first.Storage.SnapshotPath);
+        Assert.Equal(_store.BackupPath, first.Storage.BackupPath);
+        await _session.ExportSnapshotAsync();
+        Assert.Equal(first.Storage, (await _session.ViewAsync()).Storage);
+
+        _clock.Now = _clock.Now.AddSeconds(1);
+        var changed = await _session.ConfigureAsync(new(StopTicks: 24));
+        Assert.Equal(first.Storage.Revision + 1, changed.Storage.Revision);
+        Assert.True(changed.Storage.BackupAvailable);
+        Assert.Equal(first.Storage.SessionId, changed.Storage.SessionId);
+        Assert.Equal(_clock.Now, changed.Storage.LastSavedAt);
+        await _session.MonitorAsync(); // No state change, so no extra disk write.
+        Assert.Equal(changed.Storage, (await _session.ViewAsync()).Storage);
+        _store.Dispose();
+        _clock.Now = _clock.Now.AddSeconds(1);
+        _store = new(_directory); _session = new(_store, _clock);
+        var recovered = await _session.ViewAsync();
+        Assert.True(recovered.Storage.Recovered);
+        Assert.Equal(changed.Storage.LastSavedAt, recovered.Storage.RecoveredSnapshotAt);
+        Assert.Equal(changed.Storage.Revision + 1, recovered.Storage.Revision);
+        Assert.Equal(first.Storage.SessionId, recovered.Storage.SessionId);
+        Assert.Equal(24, recovered.Settings.StopTicks);
+        Assert.True(recovered.Paused);
+    }
+
+    [Fact]
+    public async Task Export_Is_The_Full_Committed_Snapshot_And_Restores_Exposure_Paused()
+    {
+        var opened = await OpenPosition();
+        var bytes = await _session.ExportSnapshotAsync();
+        Assert.Equal(File.ReadAllBytes(_store.SnapshotPath), bytes);
+        Assert.Equal(opened.Storage, (await _session.ViewAsync()).Storage);
+        var restoredDirectory = Path.Combine(_directory, "restored");
+        Directory.CreateDirectory(restoredDirectory);
+        File.WriteAllBytes(Path.Combine(restoredDirectory, "paper-session.json"), bytes);
+        using var restoredStore = new PaperSessionStore(restoredDirectory);
+        var restoredSession = new PaperSession(restoredStore, _clock);
+        var restored = await restoredSession.ViewAsync();
+        Assert.Equal(opened.Equity, restored.Equity);
+        Assert.Equal(opened.Positions, restored.Positions);
+        Assert.Equal(opened.Protection, restored.Protection);
+        Assert.Equal(opened.Fills, restored.Fills);
+        Assert.Equal(opened.Storage.SessionId, restored.Storage.SessionId);
+        Assert.Equal(opened.Storage.LastSavedAt, restored.Storage.RecoveredSnapshotAt);
+        Assert.True(restored.Storage.Recovered);
+        Assert.True(restored.Paused);
+        Assert.Empty(restored.Pending);
+        Assert.All(restored.Instruments, i => { Assert.Null(i.Quote); Assert.False(i.Fresh); });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => restoredSession.ControlAsync("resume"));
+    }
+
+    [Fact]
+    public async Task Existing_Version_One_Snapshots_Gain_Metadata_Without_Resetting_Account()
+    {
+        var opened = await OpenPosition();
+        var legacy = JsonNode.Parse(await _session.ExportSnapshotAsync())!.AsObject();
+        foreach (var field in new[] { "sessionId", "revision", "savedAt" }) legacy.Remove(field);
+        _store.Dispose();
+        File.WriteAllText(_store.SnapshotPath, legacy.ToJsonString());
+        _store = new(_directory); _session = new(_store, _clock);
+        var restored = await _session.ViewAsync();
+        Assert.Equal(opened.Positions, restored.Positions);
+        Assert.Equal(opened.Equity, restored.Equity);
+        Assert.True(restored.Storage.Recovered);
+        Assert.NotNull(restored.Storage.RecoveredSnapshotAt);
+        Assert.True(Guid.TryParseExact(restored.Storage.SessionId, "N", out _));
+        Assert.Equal(1, restored.Storage.Revision);
+        var saved = JsonSerializer.Deserialize<PaperSessionState>(await _session.ExportSnapshotAsync(), PaperSessionStore.Json)!;
+        Assert.Equal(restored.Storage.SessionId, saved.SessionId);
+        Assert.Equal(restored.Storage.LastSavedAt, saved.SavedAt);
+    }
+
+    [Theory]
+    [InlineData("sessionId", "\"not-a-session-id\"")]
+    [InlineData("revision", "-1")]
+    public void Invalid_Snapshot_Metadata_Is_Rejected(string field, string value)
+    {
+        var document = JsonNode.Parse(File.ReadAllBytes(_store.SnapshotPath))!.AsObject();
+        document[field] = JsonNode.Parse(value);
+        File.WriteAllText(_store.SnapshotPath, document.ToJsonString());
+        Assert.Throws<InvalidDataException>(() => _store.Load());
     }
 
     private sealed class TestClock : TimeProvider

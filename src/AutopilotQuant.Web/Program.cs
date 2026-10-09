@@ -134,6 +134,8 @@ app.MapGet("/api/state", async (PaperSession session, MarketDataConfiguration ma
     publicData = publicData.View()
 });
 app.MapGet("/api/market-data/public", (PublicMarketDataClient publicData) => publicData.View());
+app.MapGet("/api/session/snapshot", async (PaperSession session) =>
+    Results.File(await session.ExportSnapshotAsync(), "application/json", "paper-session.json"));
 app.MapPost("/api/market-data/public/refresh", async (PublicMarketDataClient publicData, CancellationToken ct) => await publicData.RefreshAsync(ct));
 app.MapGet("/api/market-data/public/history/{symbol}", (string symbol, PublicMarketDataClient publicData) => publicData.History(symbol));
 app.MapPost("/api/market-data/public/history/{symbol}/refresh", async (string symbol, PublicMarketDataClient publicData, CancellationToken ct) => await publicData.RefreshHistoryAsync(symbol, ct));

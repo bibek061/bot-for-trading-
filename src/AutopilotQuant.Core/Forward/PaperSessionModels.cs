@@ -30,6 +30,9 @@ public sealed record PendingEntry(string Symbol, string ContractId, DateTimeOffs
     DateTimeOffset ReceivedAt);
 public sealed record PaperProtection(string PositionId, decimal StopPrice, decimal TargetPrice);
 public sealed record SessionEvent(DateTimeOffset At, string Kind, string Message);
+public sealed record PaperStorageView(string Status, string SessionId, long Revision, DateTimeOffset? LastSavedAt,
+    bool Recovered, DateTimeOffset? RecoveredSnapshotAt, DateTimeOffset StartedAt,
+    string SnapshotPath, string BackupPath, bool BackupAvailable);
 public sealed record InstrumentView(string Symbol, string? ContractId, FeedQuote? Quote,
     bool Fresh, IReadOnlyList<MarketBar> Bars, string SignalReason, decimal? FastEma, decimal? SlowEma);
 public sealed record SessionView(string Mode, bool Paused, string PauseReason, bool RiskHalted,
@@ -38,11 +41,15 @@ public sealed record SessionView(string Mode, bool Paused, string PauseReason, b
     IReadOnlyList<PaperPosition> Positions, IReadOnlyList<PaperProtection> Protection,
     IReadOnlyList<ClosedPaperTrade> Trades, IReadOnlyList<PaperFill> Fills,
     IReadOnlyList<PendingEntry> Pending, IReadOnlyList<InstrumentView> Instruments,
-    IReadOnlyList<SessionEvent> Events, DateTimeOffset ServerTime);
+    IReadOnlyList<SessionEvent> Events, DateTimeOffset ServerTime, PaperStorageView Storage);
 
 public sealed class PaperSessionState
 {
     public int Version { get; set; } = 1;
+    // Optional in older version-1 snapshots; assigned on their next successful save.
+    public string SessionId { get; set; } = Guid.NewGuid().ToString("N");
+    public long Revision { get; set; }
+    public DateTimeOffset? SavedAt { get; set; }
     public ForwardSettings Settings { get; set; } = new();
     public PaperBrokerState Broker { get; set; } = new([], [], [], new());
     public bool Paused { get; set; } = true;
