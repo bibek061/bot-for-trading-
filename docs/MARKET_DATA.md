@@ -11,8 +11,10 @@ the dashboard and no subscription is purchased or activated by this software.
 
 ## Connect with your provider credentials
 
-For Public.com equity reference quotes, use the separate **Public.com market context**
-panel and [Public.com setup guide](PUBLIC_API.md). Public.com does not supply MES/MNQ
+For Public.com equity reference quotes and historical candles, select **SPY / QQQ** in
+Overview or use **Public.com market context** and the [Public.com setup guide](PUBLIC_API.md).
+The ETF overview opens automatically when Public.com is configured and futures are not.
+Public.com does not supply MES/MNQ
 through its documented quote API; the steps below configure the bot's futures feed.
 
 1. Obtain T4 simulator/API access and authorized MES/MNQ market data. See the

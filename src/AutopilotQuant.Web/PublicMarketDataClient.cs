@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -14,6 +15,9 @@ public sealed record PublicMarketDataView(bool SecretPresent, string Status, str
     bool Refreshing = false, string? AccountLabel = null, DateTimeOffset? RequestedAt = null,
     DateTimeOffset? LastSuccessAt = null, DateTimeOffset? NextRequestAt = null,
     PublicReferenceQuote[]? Quotes = null, bool FuturesSupported = false, bool LiveRoutingEnabled = false);
+public sealed record PublicHistoryBar(DateTimeOffset Timestamp, decimal Open, decimal High, decimal Low, decimal Close, decimal Volume);
+public sealed record PublicHistoryView(string Symbol, string Status, string Message, PublicHistoryBar[] Bars,
+    DateTimeOffset? FetchedAt = null, DateTimeOffset? NextRequestAt = null);
 
 // Read-only reference quotes. This client has no PaperSession dependency or order methods.
 public sealed class PublicMarketDataClient
@@ -28,6 +32,8 @@ public sealed class PublicMarketDataClient
     private PublicMarketDataView _view;
     private string? _token, _account;
     private DateTimeOffset _tokenExpires;
+    private readonly ConcurrentDictionary<string, PublicHistoryView> _history = new(StringComparer.Ordinal);
+    private DateTimeOffset? _providerRetryAt;
 
     public PublicMarketDataClient(HttpClient http, string? secret, string? accountId = null, TimeProvider? clock = null)
     {
@@ -56,21 +62,19 @@ public sealed class PublicMarketDataClient
         try
         {
             var now = _clock.GetUtcNow();
+            if (_providerRetryAt is { } retry && now < retry)
+            {
+                Publish(_view with { Status = "rate-limited", Message = "Public.com rate limit reached. Wait until the displayed retry time.",
+                    NextRequestAt = retry, Quotes = [] });
+                return View();
+            }
             if (_view.NextRequestAt is { } next && now < next) return View();
             Publish(_view with { Status = "refreshing", Message = "Requesting Public.com reference quotes…",
                 Refreshing = true, RequestedAt = now, NextRequestAt = now.AddSeconds(15), Quotes = [] });
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
             var ct = timeout.Token;
-            if (_token is null || now >= _tokenExpires)
-            {
-                using var auth = await SendAsync(HttpMethod.Post, "/userapiauthservice/personal/access-tokens",
-                    new { secret = _secret, validityInMinutes = 15 }, false, ct);
-                _token = auth.RootElement.GetProperty("accessToken").GetString();
-                if (string.IsNullOrWhiteSpace(_token) || _token.Length > 16384 || _token.Any(char.IsControl))
-                    throw new InvalidDataException();
-                _tokenExpires = now.AddMinutes(14);
-            }
+            await AuthenticateAsync(ct);
             if (_account is null)
             {
                 using var accounts = await SendAsync(HttpMethod.Get, "/userapigateway/trading/account", null, true, ct);
@@ -90,6 +94,7 @@ public sealed class PublicMarketDataClient
         catch (ProviderFailure failure)
         {
             if (failure.Status == "authentication-failed") { _token = null; _account = null; }
+            if (failure.Status == "rate-limited") _providerRetryAt = _clock.GetUtcNow().Add(failure.RetryAfter ?? TimeSpan.FromMinutes(1));
             Publish(_view with { Status = failure.Status, Message = failure.Message, Refreshing = false, Quotes = [],
                 NextRequestAt = _clock.GetUtcNow().Add(failure.RetryAfter ?? TimeSpan.FromSeconds(15)) });
         }
@@ -108,6 +113,94 @@ public sealed class PublicMarketDataClient
     }
 
     private void Publish(PublicMarketDataView view) => Volatile.Write(ref _view, view);
+
+    private async Task AuthenticateAsync(CancellationToken ct)
+    {
+        if (_token is not null && _clock.GetUtcNow() < _tokenExpires) return;
+        using var auth = await SendAsync(HttpMethod.Post, "/userapiauthservice/personal/access-tokens",
+            new { secret = _secret, validityInMinutes = 15 }, false, ct);
+        var token = auth.RootElement.GetProperty("accessToken").GetString();
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 16384 || token.Any(char.IsControl)) throw new InvalidDataException();
+        _token = token;
+        _tokenExpires = _clock.GetUtcNow().AddMinutes(14);
+    }
+
+    public PublicHistoryView History(string symbol)
+    {
+        if (!Symbols.Contains(symbol)) throw new ArgumentException("Public history supports SPY and QQQ only.");
+        var view = _history.GetValueOrDefault(symbol) ?? new(symbol, _view.SecretPresent ? "ready" : "not-configured",
+            "Load Public.com five-minute ETF history for chart research.", []);
+        return view with { Bars = view.Bars.ToArray() };
+    }
+
+    public async Task<PublicHistoryView> RefreshHistoryAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        var view = History(symbol);
+        if (!_view.SecretPresent || !await _gate.WaitAsync(0, cancellationToken)) return view;
+        try
+        {
+            // Re-read after acquiring the shared auth/request gate.
+            view = History(symbol);
+            var now = _clock.GetUtcNow();
+            if (view.NextRequestAt is { } next && now < next) return view;
+            if (_providerRetryAt is { } retry && now < retry)
+            {
+                view = view with { Status = "rate-limited", Message = "Public.com rate limit reached. Wait until the displayed retry time.", NextRequestAt = retry, Bars = [] };
+                return view;
+            }
+            view = view with { Status = "refreshing", Message = "Loading Public.com historical candles…", NextRequestAt = now.AddMinutes(1) };
+            _history[symbol] = view;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            await AuthenticateAsync(timeout.Token);
+            using var response = await SendAsync(HttpMethod.Get,
+                $"/userapigateway/historicdata/EQUITY/{symbol}/WEEK/FIVE_MINUTES?tradingSessionToggle=REGULAR_HOURS",
+                null, true, timeout.Token, 2 * 1024 * 1024);
+            var bars = ParseHistory(response.RootElement, symbol, _clock.GetUtcNow());
+            view = view with { Status = bars.Length > 0 ? "available" : "no-bars", Bars = bars, FetchedAt = _clock.GetUtcNow(),
+                Message = bars.Length > 0 ? "Public.com five-minute ETF candles · past week · regular session. Latest candle may be forming."
+                    : "Public.com returned no regular-session candles for this ETF." };
+        }
+        catch (ProviderFailure failure)
+        {
+            if (failure.Status == "authentication-failed") { _token = null; _account = null; }
+            if (failure.Status == "rate-limited") _providerRetryAt = _clock.GetUtcNow().Add(failure.RetryAfter ?? TimeSpan.FromMinutes(1));
+            view = view with { Status = failure.Status, Message = failure.Message, Bars = [],
+                NextRequestAt = _clock.GetUtcNow().Add(failure.RetryAfter ?? TimeSpan.FromMinutes(1)) };
+        }
+        catch (OperationCanceledException)
+        {
+            view = view with { Status = "timeout", Message = "Public.com history request timed out or was cancelled. Refresh to retry.", Bars = [] };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or JsonException or InvalidOperationException
+            or KeyNotFoundException or FormatException or ArgumentException or OverflowException)
+        {
+            view = view with { Status = "unavailable", Message = "Public.com historical candles could not be verified. Refresh to retry.", Bars = [] };
+        }
+        finally { _history[symbol] = view; _gate.Release(); }
+        return History(symbol);
+    }
+
+    private static PublicHistoryBar[] ParseHistory(JsonElement root, string symbol, DateTimeOffset now)
+    {
+        if (root.GetProperty("symbol").GetString() != symbol || root.GetProperty("period").GetString() != "WEEK") throw new InvalidDataException();
+        var array = root.GetProperty("regularMarket").GetProperty("bars");
+        if (array.GetArrayLength() > 2000) throw new InvalidDataException();
+        var bars = new List<PublicHistoryBar>();
+        var seen = new HashSet<DateTimeOffset>();
+        foreach (var item in array.EnumerateArray())
+        {
+            var timestamp = Timestamp(item, "timestamp") ?? throw new InvalidDataException();
+            if (timestamp > now.AddSeconds(2) || !seen.Add(timestamp)) throw new InvalidDataException();
+            decimal RequiredPrice(string name) => Price(item, name) ?? throw new InvalidDataException();
+            var bar = new PublicHistoryBar(timestamp, RequiredPrice("open"), RequiredPrice("high"), RequiredPrice("low"),
+                RequiredPrice("close"), item.GetProperty("volume").GetDecimal());
+            if (bar.Volume < 0 || bar.Volume > long.MaxValue || bar.Low > Math.Min(bar.Open, bar.Close) || bar.High < Math.Max(bar.Open, bar.Close) || bar.Low > bar.High)
+                throw new InvalidDataException();
+            bars.Add(bar);
+        }
+        return bars.OrderBy(bar => bar.Timestamp).TakeLast(512).ToArray();
+    }
 
     private string ChooseAccount(JsonElement root)
     {
@@ -168,7 +261,7 @@ public sealed class PublicMarketDataClient
         return timestamp;
     }
 
-    private async Task<JsonDocument> SendAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken ct)
+    private async Task<JsonDocument> SendAsync(HttpMethod method, string path, object? body, bool authenticated, CancellationToken ct, int limit = 128 * 1024)
     {
         using var request = new HttpRequestMessage(method, Origin + path);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -182,12 +275,11 @@ public sealed class PublicMarketDataClient
                 HttpStatusCode.Forbidden => new ProviderFailure("permission-denied", "Public.com denied access. Verify the key has marketdata scope and account permissions."),
                 HttpStatusCode.TooManyRequests => new ProviderFailure("rate-limited", "Public.com rate limit reached. Wait until the displayed retry time.",
                     RetryDelay(response)),
-                HttpStatusCode.BadRequest => new ProviderFailure("request-rejected", "Public.com rejected the quote request. Verify account access and market-data permissions."),
+                HttpStatusCode.BadRequest => new ProviderFailure("request-rejected", "Public.com rejected the market-data request. Verify account access and market-data permissions."),
                 _ => new ProviderFailure("unavailable", "Public.com is unavailable or returned an unsupported response. Refresh to retry.")
             };
             throw failure;
         }
-        const int limit = 128 * 1024;
         if (response.Content.Headers.ContentLength > limit) throw new InvalidDataException();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var buffer = new MemoryStream();

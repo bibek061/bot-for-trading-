@@ -28,6 +28,7 @@ jobs:
           node --check src/AutopilotQuant.Web/wwwroot/tradingview-reference.js
           node scripts/test-chart.cjs
           node scripts/test-tradingview.cjs
+          node scripts/test-market-overview.cjs
       - name: Dashboard HTTP smoke tests
         shell: pwsh
         run: ./scripts/test-dashboard.ps1 -Configuration Release

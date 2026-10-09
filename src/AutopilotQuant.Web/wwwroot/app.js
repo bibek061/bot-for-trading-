@@ -4,6 +4,9 @@ const referenceChart = new TradingViewReference.ReferenceChart(document);
 let accessKey = '', state, selectedSymbol = 'MES', currentReplay, polling = false;
 let providerState, marketDataDirty = false, marketDataBusy = false;
 let publicDataState, publicRefreshBusy = false, publicAutoNext = 0;
+const publicHistory = new Map();
+const isEtf = () => ['SPY','QQQ'].includes(selectedSymbol);
+function publicAuto(enabled) { $('public-auto').checked = enabled; $('overview-public-auto').checked = enabled; }
 const usd = value => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(value);
 const number = value => new Intl.NumberFormat('en-US', {maximumFractionDigits:2}).format(value);
 const percent = value => `${(value * 100).toFixed(2)}%`;
@@ -17,14 +20,18 @@ async function api(path, options = {}) {
   if (!response.ok) { if (response.status === 401) lock(); throw new Error(body.error || `Request failed (${response.status})`); }
   return body;
 }
-function lock() { accessKey = ''; referenceChart.close(); $('public-auto').checked = false; $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
+function lock() { accessKey = ''; referenceChart.close(); publicAuto(false); publicHistory.clear(); $('workspace').hidden = true; $('login').hidden = false; $('access-key').value = ''; }
 $('lock').onclick = lock;
 $('unlock-form').onsubmit = async event => {
   event.preventDefault(); accessKey = $('access-key').value.trim();
   try {
     const result = await api('state');
     $('access-key').value = ''; $('login').hidden = true; $('workspace').hidden = false;
+    selectedSymbol = result.provider.configured ? (result.provider.settings.instruments.find(i => i.enabled)?.symbol || 'MES')
+      : result.publicData?.secretPresent ? 'SPY' : 'MES';
+    document.querySelectorAll('[data-symbol]').forEach(b => b.classList.toggle('selected', b.dataset.symbol === selectedSymbol));
     render(result); populateSettings(); populateMarketData(); await loadReplays();
+    if (isEtf() && !$('overview').hidden && !document.hidden && result.publicData?.secretPresent) { publicAuto(true); await refreshPublicQuotes(); }
   } catch (error) { text('login-message', error.message); }
 };
 function table(id, rows, empty, columns) {
@@ -62,7 +69,7 @@ async function refresh() {
   catch (error) {
     text('connection', '● Server unavailable'); $('connection').classList.add('negative');
     $('resume').disabled = true; text('quote-state', 'UNVERIFIED');
-    $('public-auto').checked = false; text('public-data-status', 'UNVERIFIED');
+    publicAuto(false); text('public-data-status', 'UNVERIFIED');
     table('public-quotes', [], 'Server unavailable. Refresh after reconnecting to verify quote timestamps.', 7);
     text('mark-status', 'SERVER UNREACHABLE · displayed values may be stale');
     message(error.message);
@@ -77,12 +84,14 @@ document.querySelectorAll('[data-panel]').forEach(button => button.onclick = () 
   text('page-title', {overview:'Paper overview',research:'Replay lab',risk:'Risk & settings','market-data':'Market data',tradingview:'TradingView research'}[name]);
   text('page-description', {overview:'Your strategy, exposure, and execution in one place.',research:'Turn your historical data into inspectable research.',risk:'Set boundaries before your strategy takes a position.','market-data':'Prepare your connection. Know where every price comes from.',tradingview:'Explore futures charts and broader market context.'}[name]);
   if (name !== 'tradingview') referenceChart.close();
-  if (name !== 'market-data') $('public-auto').checked = false;
+  if (name !== 'market-data' && !(name === 'overview' && isEtf())) publicAuto(false);
   if (name === 'overview') renderChart();
+  renderOverviewNotice();
 });
 document.querySelectorAll('[data-symbol]').forEach(button => button.onclick = () => {
   selectedSymbol = button.dataset.symbol;
   document.querySelectorAll('[data-symbol]').forEach(b => b.classList.toggle('selected', b === button)); renderChart();
+  if (isEtf()) refreshPublicQuotes(); else publicAuto(false);
 });
 async function control(action) {
   try { await api(`control/${action}`, {method:'POST'}); message(action === 'flatten' ? 'Flatten requested. Check activity and positions for completion.' : 'Paper control applied.'); await refresh(); }
@@ -130,6 +139,12 @@ $('download-report').onclick = () => {
 let marketChart;
 function renderChart() {
   if (!state || $('overview').hidden) return;
+  $('overview-public-controls').hidden = !isEtf();
+  renderOverviewNotice();
+  if (isEtf()) { renderEtfChart(); return; }
+  text('page-title', 'Paper overview');
+  text('page-description', 'Your strategy, exposure, and execution in one place.');
+  text('chart-empty-message', 'Connect your MES/MNQ API feed in Market data. Historical candles and incoming trades will appear here.');
   const instrument = state.instruments.find(i => i.symbol === selectedSymbol);
   text('contract-label',instrument.contractId || 'No contract connected');
   text('quote',instrument.quote ? `${number(instrument.quote.bid)} / ${number(instrument.quote.ask)}` : '—');
@@ -142,6 +157,36 @@ function renderChart() {
   $('chart-empty').hidden = bars.length > 0;
   try { marketChart ||= new MarketChart($('chart')); marketChart.update(bars,selectedSymbol); }
   catch { text('chart-ohlc','Chart could not load. Refresh the page or inspect the local server assets.'); }
+}
+function renderOverviewNotice() {
+  if (!providerState) return;
+  if ($('overview').hidden || !isEtf()) {
+    text('provider-status', providerState.status); text('provider-detail', providerState.detail);
+    text('provider-tag', providerState.settings.provider === 'external' && providerState.configured ? 'INGRESS READY' : 'SETUP');
+    return;
+  }
+  const available = publicDataState?.status === 'snapshot';
+  text('provider-status', available ? 'Public.com connected · ETF market view' : 'Public.com ETF market view');
+  text('provider-detail', `${publicDataState?.message || 'Load ETF quotes and historical candles using your configured Public.com connection.'} MES/MNQ paper execution uses its separately configured futures feed.`);
+  text('provider-tag', 'ETF RESEARCH');
+}
+function renderEtfChart() {
+  const quote = publicDataState?.quotes?.find(q => q.symbol === selectedSymbol);
+  const history = publicHistory.get(selectedSymbol), bars = history?.bars || [];
+  text('page-title', 'Market overview');
+  text('page-description', 'Public.com ETF quotes and historical candles. Futures paper-account metrics appear below.');
+  text('contract-label', `${selectedSymbol} · ETF · Public.com`);
+  text('quote', quote?.last != null ? number(quote.last) : '—');
+  text('quote-state', quote?.last != null ? quote.lastFresh ? 'CURRENT LAST TRADE' : 'STALE LAST TRADE' : 'NO QUOTE');
+  const price = (value, fresh) => value == null ? '—' : `${number(value)}${fresh ? '' : ' (stale)'}`;
+  text('ema', `Bid ${price(quote?.bid, quote?.bidFresh)} / Ask ${price(quote?.ask, quote?.askFresh)}`);
+  text('quote-time', quote?.lastAt ? `Last trade: ${date(quote.lastAt)}` : 'Last trade timestamp unavailable');
+  text('chart-source', `PUBLIC.COM · ETF · REGULAR SESSION · UTC · ${bars.length} BARS`);
+  text('signal-reason', `${history?.message || 'Refresh to load the past week of five-minute candles.'} ETF research does not generate MES/MNQ signals or fills.`);
+  text('chart-empty-message', history?.message || 'Refresh market view to load Public.com historical candles.');
+  $('chart-empty').hidden = bars.length > 0;
+  try { marketChart ||= new MarketChart($('chart')); marketChart.update(bars, selectedSymbol, {timestampMode:'start',minMove:.01}); }
+  catch { text('chart-ohlc', 'Chart could not load. Refresh the page or inspect the local server assets.'); }
 }
 window.addEventListener('resize',renderChart);
 
@@ -255,24 +300,46 @@ function renderPublicData(data) {
   $('public-refresh').disabled = !data.secretPresent || publicRefreshBusy || data.refreshing || cooldown;
   $('public-refresh').textContent = publicRefreshBusy || data.refreshing ? 'Requesting quotes…' : 'Refresh Public.com quotes';
   $('public-auto').disabled = !data.secretPresent;
+  $('overview-public-refresh').disabled = !data.secretPresent || publicRefreshBusy || data.refreshing || cooldown;
+  $('overview-public-refresh').textContent = publicRefreshBusy ? 'Loading market data…' : 'Refresh market view';
+  $('overview-public-auto').disabled = !data.secretPresent;
   const price = (value, fresh) => value == null ? '—' : `${number(value)}${fresh ? '' : ' · stale'}`;
   const stamp = value => value ? date(value) : 'Unknown';
   table('public-quotes', (data.quotes || []).map(q => [q.symbol,
     price(q.last, q.lastFresh), stamp(q.lastAt), price(q.bid, q.bidFresh), stamp(q.bidAt),
     price(q.ask, q.askFresh), stamp(q.askAt)]), 'Refresh to request Public.com ETF snapshots. No prices are generated.', 7);
-  if (!['ready','refreshing','snapshot'].includes(data.status)) $('public-auto').checked = false;
+  if (!['ready','refreshing','snapshot'].includes(data.status)) publicAuto(false);
+  if (isEtf()) renderChart();
 }
 async function refreshPublicQuotes() {
   if (!accessKey || publicRefreshBusy || !publicDataState?.secretPresent) return;
+  const requestKey = accessKey;
+  let requestedSymbol;
   publicRefreshBusy = true; renderPublicData(publicDataState);
-  try { const result = await api('market-data/public/refresh', {method:'POST'}); if (accessKey) renderPublicData(result); }
-  catch (error) { $('public-auto').checked = false; message(error.message); }
+  try {
+    const result = await api('market-data/public/refresh', {method:'POST'});
+    if (accessKey !== requestKey) return;
+    renderPublicData(result);
+    if (isEtf() && !$('overview').hidden && !document.hidden && result.status === 'snapshot') {
+      requestedSymbol = selectedSymbol;
+      const history = await api(`market-data/public/history/${requestedSymbol}/refresh`, {method:'POST'});
+      if (accessKey !== requestKey) return;
+      publicHistory.set(requestedSymbol, history); renderChart();
+      if (!['available','refreshing','ready'].includes(history.status)) publicAuto(false);
+    }
+  }
+  catch (error) {
+    publicAuto(false); message(error.message);
+    if (accessKey === requestKey) renderPublicData({...publicDataState,status:'unavailable',message:'Public.com refresh could not be verified. Refresh to retry.',quotes:[]});
+  }
   finally { publicRefreshBusy = false; publicAutoNext = Date.now() + 15000; if (publicDataState && accessKey) renderPublicData(publicDataState); }
+  if (accessKey === requestKey && isEtf() && requestedSymbol && requestedSymbol !== selectedSymbol && !$('overview').hidden && !document.hidden) refreshPublicQuotes();
 }
 $('public-refresh').onclick = refreshPublicQuotes;
-$('public-auto').onchange = () => { if ($('public-auto').checked) refreshPublicQuotes(); };
-document.addEventListener('visibilitychange', () => { if (document.hidden) $('public-auto').checked = false; });
+$('overview-public-refresh').onclick = refreshPublicQuotes;
+for (const id of ['public-auto','overview-public-auto']) $(id).onchange = () => { publicAuto($(id).checked); if ($(id).checked) refreshPublicQuotes(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) publicAuto(false); });
 setInterval(() => {
-  if ($('public-auto').checked && !document.hidden && !$('market-data').hidden && Date.now() >= publicAutoNext
+  if ($('public-auto').checked && !document.hidden && (!$('market-data').hidden || !$('overview').hidden && isEtf()) && Date.now() >= publicAutoNext
       && (!publicDataState?.nextRequestAt || Date.now() >= new Date(publicDataState.nextRequestAt).getTime())) refreshPublicQuotes();
 }, 1000);

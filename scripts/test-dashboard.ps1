@@ -64,6 +64,11 @@ try {
     Check ((Invoke-WebRequest "$url/api/state" -SkipHttpErrorCheck).StatusCode -eq 401) 'Account API requires authentication'
     Check ((Invoke-WebRequest "$url/api/market-data/public/refresh" -Method Post -SkipHttpErrorCheck).StatusCode -eq 401) 'Public quote refresh requires dashboard authentication'
     Check ((Invoke-WebRequest "$url/api/market-data/public" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot access Public reference data'
+    Check ((Invoke-WebRequest "$url/api/market-data/public/history/SPY/refresh" -Method Post -SkipHttpErrorCheck).StatusCode -eq 401) 'Public historical refresh requires dashboard authentication'
+    Check ((Invoke-WebRequest "$url/api/market-data/public/history/SPY" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot read Public historical data'
+    $publicHistory = Invoke-RestMethod "$url/api/market-data/public/history/SPY/refresh" -Method Post -Headers $dashboardHeaders
+    Check ($publicHistory.status -eq 'not-configured' -and $publicHistory.bars.Count -eq 0) 'Missing Public credentials produce no historical candles or external requests'
+    Check ((Invoke-WebRequest "$url/api/market-data/public/history/MES/refresh" -Method Post -Headers $dashboardHeaders -SkipHttpErrorCheck).StatusCode -eq 400) 'Public history rejects futures symbols instead of substituting ETF data'
     $publicData = Invoke-RestMethod "$url/api/market-data/public/refresh" -Method Post -Headers $dashboardHeaders
     Check (!$publicData.secretPresent -and $publicData.status -eq 'not-configured' -and !$publicData.futuresSupported -and !$publicData.liveRoutingEnabled) 'Public quotes stay unconfigured without a server secret and cannot enable futures or live orders'
     Check ((Invoke-WebRequest "$url/api/state" -Headers $adapterHeaders -SkipHttpErrorCheck).StatusCode -eq 401) 'Adapter key cannot read account API'

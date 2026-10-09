@@ -17,6 +17,10 @@ console.log('PASS: Display aggregation preserves interval boundaries, OHLC and s
 assert.equal(candles(bars,5)[0].time,start);
 assert.equal(JSON.stringify(bars),original);
 console.log('PASS: End-stamped strategy bars plot at interval starts without mutating source bars');
+assert.equal(candles(bars,5,'start')[0].time,start+300);
+assert.equal(candles(bars,15,'start')[0].volume,30);
+assert.throws(() => candles(bars,5,'unknown'));
+console.log('PASS: Public ETF timestamps stay at provider interval starts without a futures timestamp shift');
 assert.deepEqual(ema(candles(bars,5),20),[]);
 assert.deepEqual(ema([{time:1,close:1},{time:2,close:2},{time:3,close:3}],2),[{time:2,value:1.5},{time:3,value:2.5}]);
 console.log('PASS: EMA waits for its seed window and uses the expected smoothing');

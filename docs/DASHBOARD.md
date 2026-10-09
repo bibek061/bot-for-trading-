@@ -45,6 +45,9 @@ operation, prefer a state directory outside OneDrive or other syncing software.
 
 ## Implemented behavior
 
+- Public.com ETF overview with SPY/QQQ quote snapshots, historical API candles and visible-page
+  refresh. It opens by default when Public.com is configured and a futures feed is not;
+  ETF research never feeds MES/MNQ strategy signals, fills or paper-account marks.
 - Responsive overview, five-minute candles, quote freshness, indicator/decision status,
   positions, simulated stops/targets, fills, activity, risk settings, and saved reports.
 - Existing EMA20 reclaim signal; long-only, at most one open position per symbol.

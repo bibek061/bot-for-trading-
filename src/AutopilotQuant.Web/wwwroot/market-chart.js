@@ -1,10 +1,11 @@
 'use strict';
 // Display calculations are separate from the server's five-minute strategy and order decisions.
 const ChartMath = {
-  candles(bars, minutes) {
+  candles(bars, minutes, timestampMode = 'end') {
+    if (!['start','end'].includes(timestampMode)) throw new Error('Unknown candle timestamp convention.');
     const groups = new Map();
     for (const bar of bars) {
-      const start = new Date(bar.timestamp).getTime() / 1000 - 300;
+      const start = new Date(bar.timestamp).getTime() / 1000 - (timestampMode === 'end' ? 300 : 0);
       const time = Math.floor(start / (minutes * 60)) * minutes * 60;
       const previous = groups.get(time);
       if (previous) { previous.high = Math.max(previous.high, bar.high); previous.low = Math.min(previous.low, bar.low); previous.close = bar.close; previous.volume += bar.volume; }
@@ -47,7 +48,7 @@ class MarketChart {
       try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.getElementById('market-chart-card').requestFullscreen(); }
       catch { document.getElementById('chart-ohlc').textContent = 'Fullscreen is unavailable in this browser.'; }
     };
-    ['chart-interval','chart-style','chart-ema','chart-volume'].forEach(id => document.getElementById(id).onchange = () => { this.signature = ''; this.update(this.lastBars || [],this.lastSymbol || 'MES'); });
+    ['chart-interval','chart-style','chart-ema','chart-volume'].forEach(id => document.getElementById(id).onchange = () => { this.signature = ''; this.update(this.lastBars || [],this.lastSymbol || 'MES',this.lastOptions); });
     this.chart.subscribeCrosshairMove(event => {
       const bar = event.seriesData.get(document.getElementById('chart-style').value === 'line' ? this.line : this.candles);
       if (!bar || !event.time) { this.legend(this.lastCandle); return; }
@@ -68,21 +69,22 @@ class MarketChart {
     else series.setData(data);
     this.cache.set(series,data);
   }
-  update(bars, symbol) {
-    this.lastBars = bars; this.lastSymbol = symbol;
+  update(bars, symbol, options = {}) {
+    this.lastBars = bars; this.lastSymbol = symbol; this.lastOptions = options;
     const minutes = Number(document.getElementById('chart-interval').value);
     const style = document.getElementById('chart-style').value;
     const ema = document.getElementById('chart-ema').checked, volume = document.getElementById('chart-volume').checked;
     const dataset = `${symbol}:${minutes}`;
-    const signature = JSON.stringify([dataset,style,ema,volume,bars]);
+    const signature = JSON.stringify([dataset,style,ema,volume,bars,options]);
     if (signature === this.signature) return;
-    const candles = ChartMath.candles(bars, minutes);
+    const candles = ChartMath.candles(bars, minutes, options.timestampMode || 'end');
     this.displayBars = candles; this.lastCandle = candles.at(-1);
     this.set(this.candles,candles.map(({time,open,high,low,close}) => ({time,open,high,low,close})));
     this.set(this.line,candles.map(bar => ({time:bar.time,value:bar.close})));
     this.set(this.fast,ChartMath.ema(candles,20)); this.set(this.slow,ChartMath.ema(candles,50));
     this.set(this.volume,candles.map(bar => ({time:bar.time,value:bar.volume,color:bar.close>=bar.open?'#43877788':'#a5526288'})));
-    this.candles.applyOptions({visible:style==='candles'}); this.line.applyOptions({visible:style==='line'});
+    const priceFormat = {type:'price',precision:2,minMove:options.minMove || .25};
+    this.candles.applyOptions({visible:style==='candles',priceFormat}); this.line.applyOptions({visible:style==='line',priceFormat});
     this.fast.applyOptions({visible:ema}); this.slow.applyOptions({visible:ema}); this.volume.applyOptions({visible:volume});
     this.chart.priceScale('right').applyOptions({scaleMargins:{top:.1,bottom:volume ? .25 : .1}});
     if (this.dataset !== dataset) this.chart.timeScale().fitContent();

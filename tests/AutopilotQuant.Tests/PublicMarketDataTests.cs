@@ -175,6 +175,132 @@ public sealed class PublicMarketDataTests
         Assert.Equal("permission-denied", failed.Status); Assert.Empty(failed.Quotes!);
     }
 
+    private static string HistoryJson(string symbol = "SPY") => JsonSerializer.Serialize(new {
+        symbol, period = "WEEK", regularMarket = new { bars = new[] {
+            new { timestamp = "2026-10-04T10:55:00-04:00", open = "500.21", high = "500.31", low = "500.11", close = "500.25", volume = 123L },
+            new { timestamp = "2026-10-04T10:50:00-04:00", open = "500.20", high = "500.30", low = "500.10", close = "500.21", volume = 120L }
+        }}
+    });
+
+    [Fact]
+    public async Task HistoryUsesAuthenticatedReadOnlyEndpointAndKeepsProviderTimestampsAndCents()
+    {
+        using var handler = new Handler(Response(Auth), Response(HistoryJson()));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: new Clock());
+        var view = await client.RefreshHistoryAsync("SPY");
+        Assert.Equal("available", view.Status); Assert.Equal(2, view.Bars.Length);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-04T14:50:00Z"), view.Bars[0].Timestamp);
+        Assert.Equal(500.21m, view.Bars[0].Close);
+        Assert.Equal(120, view.Bars[0].Volume);
+        var request = handler.Requests[1];
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("https://api.public.com/userapigateway/historicdata/EQUITY/SPY/WEEK/FIVE_MINUTES?tradingSessionToggle=REGULAR_HOURS", request.Uri.AbsoluteUri);
+        Assert.Equal("Bearer " + Token, request.Authorization);
+        Assert.Equal(2, handler.Requests.Count); // No accounts, portfolio or order requests.
+        foreach (var secret in new[] { Secret, Token, Account }) Assert.DoesNotContain(secret, JsonSerializer.Serialize(view));
+        Assert.Empty(client.View().Quotes!);
+        view.Bars[0] = view.Bars[0] with { Close = 1m };
+        Assert.Equal(500.21m, client.History("SPY").Bars[0].Close);
+    }
+
+    [Fact]
+    public async Task HistoryCachesEachSymbolForOneMinuteAndSharesTheTokenWithQuotes()
+    {
+        var clock = new Clock();
+        using var handler = new Handler(Response(Auth), Response(HistoryJson()), Response(HistoryJson("QQQ")),
+            Response(Accounts), Response(Quotes(Quote("SPY"))), Response(HistoryJson()));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: clock);
+        await client.RefreshHistoryAsync("SPY"); await client.RefreshHistoryAsync("SPY");
+        Assert.Equal(2, handler.Requests.Count);
+        await client.RefreshHistoryAsync("QQQ"); await client.RefreshAsync();
+        Assert.Equal(5, handler.Requests.Count);
+        clock.Now = Now.AddSeconds(59); await client.RefreshHistoryAsync("SPY");
+        Assert.Equal(5, handler.Requests.Count);
+        clock.Now = Now.AddMinutes(1); await client.RefreshHistoryAsync("SPY");
+        Assert.Equal(6, handler.Requests.Count);
+        Assert.Single(handler.Requests, r => r.Uri.AbsolutePath.EndsWith("access-tokens"));
+    }
+
+    [Theory]
+    [InlineData("1324416.436999", "1324416.436999")]
+    [InlineData("0", "0")]
+    public async Task HistoryPreservesFractionalShareVolume(string providerVolume, string expected)
+    {
+        using var handler = new Handler(Response(Auth), Response(HistoryJson().Replace("\"volume\":123", "\"volume\":" + providerVolume)));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: new Clock());
+        var view = await client.RefreshHistoryAsync("SPY");
+        Assert.Equal("available", view.Status);
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), view.Bars[1].Volume);
+    }
+
+    [Theory]
+    [InlineData("SPY", "MES")]
+    [InlineData("WEEK", "DAY")]
+    [InlineData("10:55:00-04:00", "10:50:00-04:00")]
+    [InlineData("10:55:00-04:00", "10:55:00")]
+    [InlineData("10:55:00-04:00", "11:01:00-04:00")]
+    [InlineData("500.25", "-1")]
+    [InlineData("500.25", "501.00")]
+    [InlineData("500.25", "NaN")]
+    [InlineData("\"volume\":123", "\"volume\":-1")]
+    [InlineData("\"volume\":123", "\"volume\":9223372036854775808")]
+    [InlineData("\"volume\":123", "\"volume\":null")]
+    public async Task InvalidHistoryNeverReachesTheChart(string from, string to)
+    {
+        using var handler = new Handler(Response(Auth), Response(HistoryJson().Replace(from, to)));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: new Clock());
+        var view = await client.RefreshHistoryAsync("SPY");
+        Assert.Equal("unavailable", view.Status); Assert.Empty(view.Bars);
+        Assert.Null(view.FetchedAt);
+    }
+
+    [Fact]
+    public async Task HistoryDoesNotInventMissingPricesOrCarryBarsAcrossFailedRefresh()
+    {
+        var clock = new Clock();
+        using var handler = new Handler(Response(Auth), Response(HistoryJson()), Response("private-error-" + Secret, HttpStatusCode.Forbidden));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: clock);
+        Assert.NotEmpty((await client.RefreshHistoryAsync("SPY")).Bars);
+        clock.Now = Now.AddMinutes(1);
+        var view = await client.RefreshHistoryAsync("SPY");
+        Assert.Equal("permission-denied", view.Status); Assert.Empty(view.Bars);
+        Assert.DoesNotContain(Secret, JsonSerializer.Serialize(view));
+    }
+
+    [Fact]
+    public async Task HistoryRateLimitsAlsoBlockQuoteRequests()
+    {
+        var limited = Response("ignored", HttpStatusCode.TooManyRequests);
+        limited.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMinutes(2));
+        using var handler = new Handler(Response(Auth), limited);
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret, clock: new Clock());
+        var view = await client.RefreshHistoryAsync("SPY");
+        Assert.Equal("rate-limited", view.Status);
+        Assert.Equal(Now.AddMinutes(2), view.NextRequestAt);
+        Assert.Equal("rate-limited", (await client.RefreshAsync()).Status);
+        Assert.Equal("rate-limited", (await client.RefreshHistoryAsync("QQQ")).Status);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task HistoryRejectsUnknownSymbolsAndDoesNotConnectWithoutASecret()
+    {
+        using var handler = new Handler();
+        var client = new PublicMarketDataClient(new HttpClient(handler), null);
+        Assert.Equal("not-configured", (await client.RefreshHistoryAsync("SPY")).Status);
+        foreach (var symbol in new[] { "MES", "MNQ", "spy", "../SPY", "QQQ?token=private" })
+            await Assert.ThrowsAsync<ArgumentException>(() => client.RefreshHistoryAsync(symbol));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task OversizedHistoryIsRejected()
+    {
+        using var handler = new Handler(Response(Auth), Response(new string('x', 2 * 1024 * 1024 + 1)));
+        var client = new PublicMarketDataClient(new HttpClient(handler), Secret);
+        Assert.Equal("unavailable", (await client.RefreshHistoryAsync("SPY")).Status);
+    }
+
     private sealed class Clock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = PublicMarketDataTests.Now;
